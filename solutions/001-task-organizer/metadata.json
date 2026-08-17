@@ -4,6 +4,7 @@
   "slug": "task-organizer",
   "title_he": "מארגן משימות וסדר יום",
   "title_en": "Task organizer and day planner",
+  "category": "productivity",
   "description_he": "הופך רשימת משימות חופשית לסדר יום מקומי ודטרמיניסטי לפי דחיפות וזמן פנוי.",
   "tags": ["productivity", "tasks", "schedule", "hebrew", "local-first"],
   "transport": "stdio",

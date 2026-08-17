@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary", "policy_ok", "tests_ok", "material_findings"],
+  "properties": {
+    "verdict": { "type": "string", "enum": ["approve", "reject"] },
+    "summary": { "type": "string", "minLength": 10, "maxLength": 600 },
+    "policy_ok": { "type": "boolean" },
+    "tests_ok": { "type": "boolean" },
+    "material_findings": {
+      "type": "array",
+      "maxItems": 12,
+      "items": { "type": "string", "minLength": 5, "maxLength": 400 }
+    }
+  }
+}

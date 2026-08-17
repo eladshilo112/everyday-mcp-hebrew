@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from scan_secrets import scan
+from validate_topic_policy import validate_category, validate_target as validate_topic_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 SOLUTIONS_ROOT = ROOT / "solutions"
@@ -108,6 +109,7 @@ def validate_static(solution: Path) -> list[str]:
         errors.append(f"metadata.safety must equal {expected_safety}")
     if metadata.get("transport") != "stdio":
         errors.append("metadata.transport must be stdio")
+    errors.extend(f"metadata.category: {error}" for error in validate_category(metadata.get("category")))
 
     dependencies = package.get("dependencies")
     dev_dependencies = package.get("devDependencies")
@@ -143,6 +145,11 @@ def validate_static(solution: Path) -> list[str]:
     readme = (solution / "README.md").read_text(encoding="utf-8")
     if not readme.lstrip().startswith('<div dir="rtl">'):
         errors.append("README.md must be Hebrew-first and start with an RTL div")
+    skill_path = solution / "skill" / "SKILL.md"
+    if skill_path.exists():
+        skill_text = skill_path.read_text(encoding="utf-8")
+        if not skill_text.startswith("---\n") or "\nname:" not in skill_text or "\ndescription:" not in skill_text:
+            errors.append("skill/SKILL.md must contain YAML frontmatter with name and description")
     test_files = sorted((solution / "tests").glob("*.test.ts"))
     if len(test_files) < 4:
         errors.append("solution must contain at least four TypeScript test files")
@@ -187,6 +194,8 @@ def validate_static(solution: Path) -> list[str]:
 
     for finding in scan(solution):
         errors.append(f"secret pattern: {finding}")
+    for finding in validate_topic_policy(solution):
+        errors.append(f"topic policy: {finding}")
     return errors
 
 

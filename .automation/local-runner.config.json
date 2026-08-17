@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "repository": "eladshilo112/everyday-mcp-hebrew",
+  "remote_url": "https://github.com/eladshilo112/everyday-mcp-hebrew.git",
+  "default_branch": "main",
+  "task_name": "Everyday MCP Hebrew Daily",
+  "timezone_id": "Israel Standard Time",
+  "daily_time": "09:00",
+  "state_folder": "EverydayMcpHebrew",
+  "context_budgets": {
+    "graph_query_chars": 12000,
+    "plan_prompt_chars": 24000,
+    "implementation_prompt_chars": 30000,
+    "review_prompt_chars": 36000
+  }
+}
