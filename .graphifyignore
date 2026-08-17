@@ -1,0 +1,12 @@
+.git/
+.github/
+.claude/
+.codex/
+.agents/
+graphify-out/
+node_modules/
+dist/
+.automation/local-state/
+*.log
+*.pyc
+

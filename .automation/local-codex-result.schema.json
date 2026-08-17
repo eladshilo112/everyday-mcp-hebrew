@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["solution_id", "slug", "summary", "tests_attempted"],
+  "properties": {
+    "solution_id": { "type": "string", "pattern": "^[0-9]{3}$" },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "summary": { "type": "string", "minLength": 10, "maxLength": 500 },
+    "tests_attempted": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "type": "string", "minLength": 2, "maxLength": 200 }
+    }
+  }
+}

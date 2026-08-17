@@ -2,8 +2,15 @@ node_modules/
 dist/
 __pycache__/
 *.py[cod]
+graphify-out/
+.graphify_analysis.json
+.graphify_labels.json
+.claude/
+.codex/
 .automation/*.patch
 .automation/*.output.json
+.automation/local-handoff.md
+.automation/local-state/
 .DS_Store
 Thumbs.db
 *.log

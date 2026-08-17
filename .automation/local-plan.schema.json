@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "solution_id",
+    "date",
+    "slug",
+    "title_he",
+    "title_en",
+    "category",
+    "problem_he",
+    "audience_he",
+    "benefit_he",
+    "tool_names",
+    "include_skill",
+    "skill_name",
+    "implementation_requirements",
+    "test_cases"
+  ],
+  "properties": {
+    "solution_id": { "type": "string", "pattern": "^[0-9]{3}$" },
+    "date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 50 },
+    "title_he": { "type": "string", "minLength": 3, "maxLength": 80 },
+    "title_en": { "type": "string", "minLength": 3, "maxLength": 80 },
+    "category": { "type": "string", "pattern": "^[a-z]+(?:-[a-z]+)*$", "maxLength": 40 },
+    "problem_he": { "type": "string", "minLength": 20, "maxLength": 400 },
+    "audience_he": { "type": "string", "minLength": 10, "maxLength": 250 },
+    "benefit_he": { "type": "string", "minLength": 10, "maxLength": 250 },
+    "tool_names": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,60}$" }
+    },
+    "include_skill": { "type": "boolean" },
+    "skill_name": { "type": "string", "pattern": "^(?:|[a-z0-9]+(?:-[a-z0-9]+)*)$", "maxLength": 64 },
+    "implementation_requirements": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 20,
+      "items": { "type": "string", "minLength": 5, "maxLength": 300 }
+    },
+    "test_cases": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 20,
+      "items": { "type": "string", "minLength": 5, "maxLength": 300 }
+    }
+  }
+}
