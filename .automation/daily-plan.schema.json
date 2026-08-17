@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "solution_id",
+    "date",
+    "slug",
+    "title_he",
+    "title_en",
+    "problem_he",
+    "audience_he",
+    "benefit_he",
+    "tool_names",
+    "implementation_requirements",
+    "test_cases"
+  ],
+  "properties": {
+    "solution_id": { "type": "string", "pattern": "^[0-9]{3}$" },
+    "date": { "type": "string", "format": "date" },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 50 },
+    "title_he": { "type": "string", "minLength": 3, "maxLength": 80 },
+    "title_en": { "type": "string", "minLength": 3, "maxLength": 80 },
+    "problem_he": { "type": "string", "minLength": 20, "maxLength": 400 },
+    "audience_he": { "type": "string", "minLength": 10, "maxLength": 250 },
+    "benefit_he": { "type": "string", "minLength": 10, "maxLength": 250 },
+    "tool_names": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,60}$" }
+    },
+    "implementation_requirements": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 20,
+      "items": { "type": "string", "minLength": 5, "maxLength": 300 }
+    },
+    "test_cases": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 20,
+      "items": { "type": "string", "minLength": 5, "maxLength": 300 }
+    }
+  }
+}

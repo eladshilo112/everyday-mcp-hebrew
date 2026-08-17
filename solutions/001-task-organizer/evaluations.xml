@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair>
+    <question>Use the parsing tool on "דחוף להגיש היום, 20 דקות". What urgency score is returned? Answer with one integer.</question>
+    <answer>75</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Use the parsing tool on "Read a chapter" in English. How many default minutes are assigned? Answer with one integer.</question>
+    <answer>15</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Organize "urgent call today, 10 min; read, 20 min" with 25 available minutes from 10:00. How many minutes remain? Answer with one integer.</question>
+    <answer>15</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Organize "late task, 30 min" with 30 minutes from 23:50. What HH:MM end time is returned?</question>
+    <answer>00:20</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Parse "להמתין, שעתיים". What duration in minutes is returned? Answer with one integer.</question>
+    <answer>120</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Parse "P1 submit, 30 min" in English. What urgency bucket is returned? Answer high, medium, or low.</question>
+    <answer>medium</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Organize one 15-minute task with zero available minutes. How many tasks are scheduled? Answer with one integer.</question>
+    <answer>0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Parse an input containing only whitespace and bullets. What warning code is returned?</question>
+    <answer>empty_input</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Parse "Long task, 30 hours" in English. What duration in minutes is returned after safety capping? Answer with one integer.</question>
+    <answer>1440</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Parse two identical lines "לשתות מים". How many tasks are returned? Answer with one integer.</question>
+    <answer>2</answer>
+  </qa_pair>
+</evaluation>

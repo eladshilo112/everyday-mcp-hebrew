@@ -1,0 +1,12 @@
+node_modules/
+dist/
+__pycache__/
+*.py[cod]
+.automation/*.patch
+.automation/*.output.json
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+!.env.example

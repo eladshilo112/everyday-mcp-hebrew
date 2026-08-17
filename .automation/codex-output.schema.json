@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["solution_id", "slug", "summary", "patch"],
+  "properties": {
+    "solution_id": { "type": "string", "pattern": "^[0-9]{3}$" },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 50 },
+    "summary": { "type": "string", "minLength": 10, "maxLength": 500 },
+    "patch": { "type": "string", "minLength": 100, "maxLength": 500000 }
+  }
+}
