@@ -35,12 +35,22 @@ class CatalogTests(unittest.TestCase):
 
 
 class PreflightTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        metadata = self.root / "solutions" / "001-existing" / "metadata.json"
+        metadata.parent.mkdir(parents=True)
+        metadata.write_text('{"id":"001","date":"2026-08-17"}\n', encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
     def test_existing_date_is_a_noop_and_next_id_is_contiguous(self) -> None:
-        result = discover(ROOT, datetime(2026, 8, 17, 6, 0, tzinfo=timezone.utc))
+        result = discover(self.root, datetime(2026, 8, 17, 6, 0, tzinfo=timezone.utc))
         self.assertEqual(result, {"date": "2026-08-17", "solution_id": "002", "should_run": "false"})
 
     def test_new_date_runs(self) -> None:
-        result = discover(ROOT, datetime(2026, 8, 18, 6, 0, tzinfo=timezone.utc))
+        result = discover(self.root, datetime(2026, 8, 18, 6, 0, tzinfo=timezone.utc))
         self.assertEqual(result, {"date": "2026-08-18", "solution_id": "002", "should_run": "true"})
 
 
