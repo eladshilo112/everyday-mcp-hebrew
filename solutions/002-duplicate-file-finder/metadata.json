@@ -1,0 +1,21 @@
+{
+  "id": "002",
+  "date": "2026-08-18",
+  "slug": "duplicate-file-finder",
+  "title_he": "מאתר קבצים כפולים",
+  "title_en": "Duplicate File Finder",
+  "category": "files",
+  "description_he": "סורק תיקייה מקומית, מזהה קבצים זהים לפי SHA-256 ומציע תוכנית ניקוי ידנית, בלי למחוק או לשנות קבצים.",
+  "audience_he": "כל מי שמנהל תיקיות קבצים אישיות או עבודה ורוצה לזהות כפילויות בלי חשבון או שירות ענן.",
+  "benefit_he": "דוח דטרמיניסטי של כפילויות לפי תוכן והמלצת ניקוי בטוחה, מקומית וקריאה בלבד.",
+  "tags": ["files", "duplicates", "sha256", "hebrew", "local-first", "read-only"],
+  "transport": "stdio",
+  "tools": ["scan_directory", "find_duplicates", "suggest_cleanup"],
+  "skill": "file-cleanup-report",
+  "safety": {
+    "read_only": true,
+    "destructive": false,
+    "network": false,
+    "telemetry": false
+  }
+}
