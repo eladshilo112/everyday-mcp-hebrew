@@ -34,7 +34,7 @@ $script:PublicationState = [ordered]@{
 }
 
 function Write-Utf8NoBom {
-    param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Text)
+    param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
     $encoding = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($Path, $Text, $encoding)
 }
@@ -114,6 +114,7 @@ function Invoke-Captured {
     try {
         $startInfo.StandardOutputEncoding = $utf8
         $startInfo.StandardErrorEncoding = $utf8
+        $startInfo.StandardInputEncoding = $utf8
     }
     catch { }
     $process = New-Object System.Diagnostics.Process
@@ -356,7 +357,7 @@ $catalog
         Write-Utf8NoBom -Path $planPromptPath -Text $planPrompt
         $planSchema = (Get-Content -LiteralPath $planSchemaPath -Raw | ConvertFrom-Json) | ConvertTo-Json -Depth 20 -Compress
         $planSystemPrompt = "You are a constrained public open-source MCP planner. Follow the supplied task and return only the required structured JSON. Do not use tools or infer private context."
-        $claudePlan = Invoke-Captured -FilePath $claude -Arguments @("-p", "--safe-mode", "--system-prompt", $planSystemPrompt, "--permission-mode", "plan", "--model", "sonnet", "--effort", "medium", "--output-format", "json", "--max-turns", "2", "--no-session-persistence", "--json-schema", $planSchema, "--disallowedTools", "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task") -WorkingDirectory $runRepo -InputText $planPrompt -StdoutPath (Join-Path $runDir "claude-plan.output.json") -StderrPath (Join-Path $runDir "claude-plan.stderr")
+        $claudePlan = Invoke-Captured -FilePath $claude -Arguments @("-p", "--safe-mode", "--system-prompt", $planSystemPrompt, "--permission-mode", "plan", "--model", "sonnet", "--effort", "medium", "--output-format", "json", "--max-turns", "3", "--no-session-persistence", "--json-schema", $planSchema, "--disallowedTools", "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task") -WorkingDirectory $runRepo -InputText $planPrompt -StdoutPath (Join-Path $runDir "claude-plan.output.json") -StderrPath (Join-Path $runDir "claude-plan.stderr")
         $planResult = Get-ClaudeStructuredOutput -JsonText $claudePlan.Output
         $plan = $planResult.Value
         Assert-PlanIdentity -Plan $plan -ExpectedId $solutionId -ExpectedDate $date
@@ -439,7 +440,7 @@ $diffExcerpt
         Write-Utf8NoBom -Path (Join-Path $runDir "claude-review.prompt.txt") -Text $reviewPrompt
         $reviewSchema = (Get-Content -LiteralPath $reviewSchemaPath -Raw | ConvertFrom-Json) | ConvertTo-Json -Depth 20 -Compress
         $reviewSystemPrompt = "You are a constrained public open-source code reviewer. Judge only the supplied evidence and return only the required structured JSON. Do not use tools or infer private context."
-        $claudeReview = Invoke-Captured -FilePath $claude -Arguments @("-p", "--safe-mode", "--system-prompt", $reviewSystemPrompt, "--permission-mode", "plan", "--model", "sonnet", "--effort", "medium", "--output-format", "json", "--max-turns", "2", "--no-session-persistence", "--json-schema", $reviewSchema, "--disallowedTools", "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task") -WorkingDirectory $runRepo -InputText $reviewPrompt -StdoutPath (Join-Path $runDir "claude-review.output.json") -StderrPath (Join-Path $runDir "claude-review.stderr")
+        $claudeReview = Invoke-Captured -FilePath $claude -Arguments @("-p", "--safe-mode", "--system-prompt", $reviewSystemPrompt, "--permission-mode", "plan", "--model", "sonnet", "--effort", "medium", "--output-format", "json", "--max-turns", "4", "--no-session-persistence", "--json-schema", $reviewSchema, "--disallowedTools", "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task") -WorkingDirectory $runRepo -InputText $reviewPrompt -StdoutPath (Join-Path $runDir "claude-review.output.json") -StderrPath (Join-Path $runDir "claude-review.stderr")
         $reviewResult = Get-ClaudeStructuredOutput -JsonText $claudeReview.Output
         $review = $reviewResult.Value
         if ([string]$review.verdict -ne "approve" -or -not $review.policy_ok -or -not $review.tests_ok -or @($review.material_findings).Count -ne 0) {
