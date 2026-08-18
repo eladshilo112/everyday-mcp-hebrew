@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair>
+    <question>Scan a fixture containing three byte-identical files and two unique files, then call find_duplicates. How many duplicate groups are returned?</question>
+    <answer>1</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>For identical files named c.txt, a.txt, and b.txt, what is the first path in the deterministically sorted duplicate group?</question>
+    <answer>a.txt</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Scan two four-byte files containing abcd and wxyz. How many duplicate groups does find_duplicates return?</question>
+    <answer>0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Scan an empty directory and call find_duplicates with its scan identifier. How many duplicate groups are returned?</question>
+    <answer>0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Scan a nine-byte file with max_file_size_bytes set to 8. What skipped reason is reported?</question>
+    <answer>too_large</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Call scan_directory with a local path that does not exist. What structured error code is returned?</question>
+    <answer>not_found</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Call scan_directory with a regular file path instead of a directory path. What structured error code is returned?</question>
+    <answer>not_directory</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Call find_duplicates before any successful scan in the server process. What structured error code is returned?</question>
+    <answer>no_scan</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Two identical five-byte files form one duplicate group. How many potential savings bytes does suggest_cleanup report?</question>
+    <answer>5</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Scan with max_depth set to zero when a nested directory exists. What skipped reason is reported for that directory?</question>
+    <answer>max_depth</answer>
+  </qa_pair>
+</evaluation>

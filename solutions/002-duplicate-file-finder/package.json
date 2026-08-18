@@ -1,0 +1,44 @@
+{
+  "name": "@everyday-mcp-hebrew/duplicate-file-finder",
+  "version": "1.0.0",
+  "description": "Deterministic local read-only MCP server for finding duplicate files",
+  "type": "module",
+  "main": "dist/src/server.js",
+  "types": "dist/src/server.d.ts",
+  "bin": {
+    "everyday-duplicate-file-finder-mcp": "dist/src/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "metadata.json",
+    "skill"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/tests/scanner.test.js dist/tests/duplicates.test.js dist/tests/cleanup.test.js dist/tests/determinism.test.js dist/tests/mcp-integration.test.js",
+    "start": "node dist/src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "hebrew",
+    "files",
+    "duplicates",
+    "local-first",
+    "read-only"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@types/node": "20.19.43",
+    "typescript": "7.0.2"
+  }
+}
