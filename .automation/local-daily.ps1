@@ -64,7 +64,7 @@ function Resolve-RequiredFile {
 
 function Convert-ToWindowsCommandLineArgument {
     param([AllowEmptyString()][string]$Argument)
-    if ($Argument.Length -gt 0 -and $Argument -notmatch '[\s"]') { return $Argument }
+    if ($Argument.Length -gt 0 -and $Argument -notmatch '[\s"\\]') { return $Argument }
     $builder = New-Object System.Text.StringBuilder
     [void]$builder.Append('"')
     $backslashes = 0
