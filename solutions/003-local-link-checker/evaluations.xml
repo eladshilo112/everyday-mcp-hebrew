@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair>
+    <question>Scan a directory whose Markdown files contain two valid relative links. How many findings are returned?</question>
+    <answer>0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A missing target is linked on line 4 of notes/index.md. Which source and line are reported?</question>
+    <answer>notes/index.md, line 4</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>An existing target.md lacks the requested heading anchor. Which finding issue is returned?</question>
+    <answer>missing_anchor</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A document contains one HTTPS link and no local links. How many links are checked locally?</question>
+    <answer>0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Call scan_markdown_links with a path that resolves above the approved base. Which error code is returned?</question>
+    <answer>outside_base</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A link points to Quarterly%20Notes.md and the file Quarterly Notes.md exists. How many findings are returned?</question>
+    <answer>0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Run an unchanged scan twice. Is the ordered structured result identical across both runs?</question>
+    <answer>yes</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>One Markdown file is unreadable while another contains a broken link. Does the readable file still produce a finding?</question>
+    <answer>yes</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Call scan_markdown_links with an unexpected input field. Does the strict MCP input schema accept it?</question>
+    <answer>no</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>After checking a Markdown file, should its content and modification timestamp be changed?</question>
+    <answer>no</answer>
+  </qa_pair>
+</evaluation>

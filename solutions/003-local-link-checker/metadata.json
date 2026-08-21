@@ -1,0 +1,20 @@
+{
+  "id": "003",
+  "date": "2026-08-21",
+  "slug": "local-link-checker",
+  "title_he": "בודק קישורים מקומיים",
+  "title_en": "Local Link Checker",
+  "category": "files",
+  "description_he": "סורק מסמכי Markdown בתיקייה מקומית ומדווח על יעדים ועוגנים חסרים בלי לשנות קבצים ובלי לפנות לרשת.",
+  "audience_he": "לכל מי שמנהל תיקיית מסמכים, הערות או תיעוד באמצעות Claude Code, Codex או לקוח MCP.",
+  "benefit_he": "דוח יציב וניתן לשחזור של קישורים יחסיים שבורים, מקומי, ללא חשבון ובקריאה בלבד.",
+  "tags": ["files", "markdown", "links", "hebrew", "local-first", "read-only"],
+  "transport": "stdio",
+  "tools": ["scan_markdown_links", "check_markdown_file"],
+  "safety": {
+    "read_only": true,
+    "destructive": false,
+    "network": false,
+    "telemetry": false
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "@everyday-mcp-hebrew/local-link-checker",
+  "version": "1.0.0",
+  "description": "Deterministic local read-only MCP server for checking Markdown links",
+  "type": "module",
+  "main": "dist/src/server.js",
+  "types": "dist/src/server.d.ts",
+  "bin": {
+    "everyday-local-link-checker-mcp": "dist/src/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "metadata.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/tests/scanner.test.js dist/tests/anchors.test.js dist/tests/safety.test.js dist/tests/determinism-read-errors.test.js dist/tests/mcp-integration.test.js",
+    "start": "node dist/src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "hebrew",
+    "files",
+    "markdown",
+    "links",
+    "local-first",
+    "read-only"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@types/node": "20.19.43",
+    "typescript": "7.0.2"
+  }
+}
