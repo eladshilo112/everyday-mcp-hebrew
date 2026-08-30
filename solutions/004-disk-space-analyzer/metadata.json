@@ -1,0 +1,20 @@
+{
+  "id": "004",
+  "date": "2026-08-30",
+  "slug": "disk-space-analyzer",
+  "title_he": "מנתח שטח דיסק מקומי",
+  "title_en": "Local Disk Space Analyzer",
+  "category": "files",
+  "description_he": "סורק מטא־דאטה של תיקייה מקומית ומציג אילו קבצים ותיקיות תופסים את מרב המקום, בלי לקרוא תוכן ובלי לשנות דבר.",
+  "audience_he": "כל מי שעובד מול תיקיות מקומיות גדולות ורוצה להבין במהירות מה תופס שטח אחסון, בלי למחוק דבר.",
+  "benefit_he": "דוח מדויק ודטרמיניסטי של הקבצים והתיקיות הגדולים ביותר, ללא חיבור לרשת, ללא חשבון וללא פעולת מחיקה או שינוי.",
+  "tags": ["files", "disk-space", "storage", "hebrew", "local-first", "read-only"],
+  "transport": "stdio",
+  "tools": ["scan_directory", "list_largest_items", "get_scan_summary"],
+  "safety": {
+    "read_only": true,
+    "destructive": false,
+    "network": false,
+    "telemetry": false
+  }
+}

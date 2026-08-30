@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair>
+    <question>Scan an empty directory with no exclusions. What total size and file count are returned?</question>
+    <answer>0 bytes and 0 files</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A root contains a 3-byte file and nested files of 5 and 7 bytes. What total size is returned?</question>
+    <answer>15 bytes</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Files largest.bin, alpha.bin, and zeta.bin have sizes 12, 7, and 7 bytes. What deterministic order is returned?</question>
+    <answer>largest.bin, alpha.bin, zeta.bin</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A 4-byte visible file and files under .git and node_modules are scanned with default exclusions. What total size is returned?</question>
+    <answer>4 bytes</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>With max_depth 1, a root file is 1 byte, a child file is 2 bytes, and a grandchild file is 4 bytes. What total and warning code are returned?</question>
+    <answer>3 bytes and MAX_DEPTH_REACHED</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A directory resolves to an already visited canonical directory. Which warning code reports the skipped cycle?</question>
+    <answer>CYCLE_SKIPPED</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>One subdirectory cannot be read but its sibling is readable. Which warning code is recorded, and does scanning continue?</question>
+    <answer>PERMISSION_DENIED, and scanning continues</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Call scan_directory with a local path that does not exist. Which structured error code is returned?</question>
+    <answer>not_found</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Call list_largest_items with top_n 1 and item_type directory after a successful scan. What kind and maximum number of items are returned?</question>
+    <answer>directory, at most 1 item</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>After one successful scan and then a failed scan, what does get_scan_summary describe through MCP and in which two forms?</question>
+    <answer>The latest successful scan, as readable text content and structuredContent</answer>
+  </qa_pair>
+</evaluation>
