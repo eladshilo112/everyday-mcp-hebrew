@@ -7,10 +7,20 @@
   "timezone_id": "Israel Standard Time",
   "daily_time": "09:00",
   "state_folder": "EverydayMcpHebrew",
+  "fallbacks": {
+    "codex_on_claude_known_unavailability": true
+  },
+  "review": {
+    "reclassify_inconsistent_approve_once": true
+  },
   "context_budgets": {
     "graph_query_chars": 12000,
     "plan_prompt_chars": 24000,
     "implementation_prompt_chars": 30000,
-    "review_prompt_chars": 36000
+    "review_prompt_chars": 70000,
+    "review_interface_diff_chars": 10000,
+    "review_core_diff_chars": 16000,
+    "review_test_diff_chars": 14000,
+    "review_docs_diff_chars": 4000
   }
 }

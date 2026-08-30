@@ -3,13 +3,23 @@
   "additionalProperties": false,
   "required": ["verdict", "summary", "policy_ok", "tests_ok", "material_findings"],
   "properties": {
-    "verdict": { "type": "string", "enum": ["approve", "reject"] },
-    "summary": { "type": "string", "minLength": 10, "maxLength": 600 },
+    "verdict": {
+      "type": "string",
+      "enum": ["approve", "reject"],
+      "description": "Approve is valid only when policy_ok and tests_ok are true and material_findings is empty. Reject whenever any blocking issue remains."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 600,
+      "description": "Concise decision summary. Record non-blocking caveats, style notes, dependency curiosities, and suggestions here rather than in material_findings."
+    },
     "policy_ok": { "type": "boolean" },
     "tests_ok": { "type": "boolean" },
     "material_findings": {
       "type": "array",
       "maxItems": 12,
+      "description": "Blocking issues only. Every entry must justify verdict=reject. This array must be empty when verdict=approve.",
       "items": { "type": "string", "minLength": 5, "maxLength": 400 }
     }
   }

@@ -20,6 +20,7 @@ $script:Report = [ordered]@{
     status = "starting"
     started_at_utc = [DateTime]::UtcNow.ToString("o")
     mode = if ($PreflightOnly) { "preflight" } elseif ($DryRun) { "dry-run" } else { "publish" }
+    degraded_model_independence = $false
     context_metrics = [ordered]@{}
     stages = [ordered]@{}
 }
@@ -37,6 +38,19 @@ function Write-Utf8NoBom {
     param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
     $encoding = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($Path, $Text, $encoding)
+}
+
+function Write-CodexCompatiblePlanSchema {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath
+    )
+    $schema = Get-Content -LiteralPath $SourcePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $toolNames = $schema.properties.tool_names
+    if ($toolNames.PSObject.Properties.Name -contains "uniqueItems") {
+        $toolNames.PSObject.Properties.Remove("uniqueItems")
+    }
+    Write-Utf8NoBom -Path $DestinationPath -Text ($schema | ConvertTo-Json -Depth 20)
 }
 
 function Write-RunLog {
@@ -101,6 +115,34 @@ function Invoke-Captured {
     if ([string]::IsNullOrWhiteSpace($WorkingDirectory)) {
         $WorkingDirectory = (Get-Location).Path
     }
+    if ($null -ne $InputText) {
+        $captureRoot = Join-Path $env:TEMP ("everyday-mcp-capture-" + [Guid]::NewGuid().ToString("N"))
+        try {
+            New-Item -ItemType Directory -Path $captureRoot -Force | Out-Null
+            $inputPath = Join-Path $captureRoot "stdin.utf8"
+            $effectiveStdoutPath = if ([string]::IsNullOrWhiteSpace($StdoutPath)) { Join-Path $captureRoot "stdout.utf8" } else { $StdoutPath }
+            $effectiveStderrPath = if ([string]::IsNullOrWhiteSpace($StderrPath)) { Join-Path $captureRoot "stderr.utf8" } else { $StderrPath }
+            Write-Utf8NoBom -Path $inputPath -Text $InputText
+            $argumentLine = (($Arguments | ForEach-Object { Convert-ToWindowsCommandLineArgument -Argument ([string]$_) }) -join ' ')
+            $process = Start-Process -FilePath $FilePath -ArgumentList $argumentLine -WorkingDirectory $WorkingDirectory -NoNewWindow -Wait -PassThru -RedirectStandardInput $inputPath -RedirectStandardOutput $effectiveStdoutPath -RedirectStandardError $effectiveStderrPath
+            $exitCode = $process.ExitCode
+            $outputRaw = Get-Content -LiteralPath $effectiveStdoutPath -Raw -Encoding UTF8
+            $errorRaw = Get-Content -LiteralPath $effectiveStderrPath -Raw -Encoding UTF8
+            $outputText = if ($null -eq $outputRaw) { "" } else { ([string]$outputRaw).TrimEnd() }
+            $errorText = if ($null -eq $errorRaw) { "" } else { ([string]$errorRaw).TrimEnd() }
+        }
+        finally {
+            if (Test-Path -LiteralPath $captureRoot) {
+                Remove-Item -LiteralPath $captureRoot -Recurse -Force
+            }
+        }
+        if ($exitCode -ne 0 -and -not $AllowFailure) {
+            $safeError = if ([string]::IsNullOrWhiteSpace($errorText)) { "no stderr" } else { ($errorText -split "`r?`n")[0] }
+            throw "Command failed with exit code ${exitCode}: $FilePath. $safeError"
+        }
+        return [pscustomobject]@{ ExitCode = $exitCode; Output = $outputText; Error = $errorText }
+    }
+
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $FilePath
     $startInfo.WorkingDirectory = $WorkingDirectory
@@ -108,24 +150,16 @@ function Invoke-Captured {
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
-    $startInfo.RedirectStandardInput = $null -ne $InputText
+    $startInfo.RedirectStandardInput = $false
     $startInfo.Arguments = (($Arguments | ForEach-Object { Convert-ToWindowsCommandLineArgument -Argument ([string]$_) }) -join ' ')
     $utf8 = New-Object System.Text.UTF8Encoding($false)
-    try {
-        $startInfo.StandardOutputEncoding = $utf8
-        $startInfo.StandardErrorEncoding = $utf8
-        $startInfo.StandardInputEncoding = $utf8
-    }
-    catch { }
+    try { $startInfo.StandardOutputEncoding = $utf8 } catch { }
+    try { $startInfo.StandardErrorEncoding = $utf8 } catch { }
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $startInfo
     if (-not $process.Start()) { throw "Could not start process: $FilePath" }
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.ReadToEndAsync()
-    if ($null -ne $InputText) {
-        $process.StandardInput.Write($InputText)
-        $process.StandardInput.Close()
-    }
     $process.WaitForExit()
     $exitCode = $process.ExitCode
     $outputText = $stdoutTask.Result.TrimEnd()
@@ -169,6 +203,10 @@ function Undo-UnmergedPublication {
     $repositoryName = [string]$script:PublicationState.repository
     $wslExe = [string]$script:PublicationState.wsl_exe
     $prUrl = [string]$script:PublicationState.pr_url
+    $branch = [string]$script:PublicationState.branch
+    if ([string]::IsNullOrWhiteSpace($prUrl) -and (-not $script:PublicationState.branch_owned -or [string]::IsNullOrWhiteSpace($branch))) {
+        return "not_needed_before_publication"
+    }
     if (-not [string]::IsNullOrWhiteSpace($prUrl)) {
         $view = Invoke-Wsl -WslExe $wslExe -Arguments @("gh", "pr", "view", "-R", $repositoryName, $prUrl, "--json", "state") -AllowFailure
         if ($view.ExitCode -eq 0) {
@@ -180,7 +218,6 @@ function Undo-UnmergedPublication {
         }
         Invoke-Wsl -WslExe $wslExe -Arguments @("gh", "pr", "close", "-R", $repositoryName, $prUrl, "--delete-branch") -AllowFailure | Out-Null
     }
-    $branch = [string]$script:PublicationState.branch
     $wslRepo = [string]$script:PublicationState.wsl_repo
     if ($script:PublicationState.branch_owned -and -not [string]::IsNullOrWhiteSpace($branch) -and -not [string]::IsNullOrWhiteSpace($wslRepo)) {
         Invoke-Wsl -WslExe $wslExe -Arguments @("git", "-C", $wslRepo, "push", "origin", "--delete", $branch) -AllowFailure | Out-Null
@@ -226,6 +263,151 @@ function Get-ClaudeStructuredOutput {
     return [pscustomobject]@{ Envelope = $envelope; Value = $envelope.structured_output }
 }
 
+function Get-ClaudeFailureMessage {
+    param([AllowEmptyString()][string]$JsonText)
+    if ([string]::IsNullOrWhiteSpace($JsonText)) { return "Claude returned no structured error output" }
+    try {
+        $envelope = $JsonText | ConvertFrom-Json
+        if ($envelope.PSObject.Properties.Name -contains "result" -and -not [string]::IsNullOrWhiteSpace([string]$envelope.result)) {
+            $message = (([string]$envelope.result) -replace '\s+', ' ').Trim()
+            if ($message.Length -gt 300) { return $message.Substring(0, 300) }
+            return $message
+        }
+    }
+    catch { }
+    return "Claude returned an unreadable structured error envelope"
+}
+
+function Get-CodexFailureMessage {
+    param([AllowEmptyString()][string]$ErrorText)
+    if ([string]::IsNullOrWhiteSpace($ErrorText)) { return "Codex returned no stderr" }
+    $errorLines = @($ErrorText -split "`r?`n" | Where-Object { $_.Trim() -match '^ERROR:' })
+    $message = if ($errorLines.Count -gt 0) { [string]$errorLines[0] } else { [string](($ErrorText -split "`r?`n")[0]) }
+    $message = ($message -replace '\s+', ' ').Trim()
+    if ($message.Length -gt 300) { return $message.Substring(0, 300) }
+    return $message
+}
+
+function Get-ReviewDecision {
+    param([Parameter(Mandatory = $true)]$Review)
+
+    if ($Review.verdict -isnot [string]) {
+        return [pscustomobject]@{ Pass = $false; Reason = "verdict_type_invalid" }
+    }
+    if ([string]$Review.verdict -ne "approve") {
+        return [pscustomobject]@{ Pass = $false; Reason = "verdict_not_approve" }
+    }
+    if ($Review.policy_ok -isnot [bool]) {
+        return [pscustomobject]@{ Pass = $false; Reason = "policy_type_invalid" }
+    }
+    if (-not $Review.policy_ok) {
+        return [pscustomobject]@{ Pass = $false; Reason = "policy_failed" }
+    }
+    if ($Review.tests_ok -isnot [bool]) {
+        return [pscustomobject]@{ Pass = $false; Reason = "tests_type_invalid" }
+    }
+    if (-not $Review.tests_ok) {
+        return [pscustomobject]@{ Pass = $false; Reason = "tests_failed" }
+    }
+    if (@($Review.material_findings).Count -ne 0) {
+        return [pscustomobject]@{ Pass = $false; Reason = "approve_with_material_findings_inconsistent" }
+    }
+    return [pscustomobject]@{ Pass = $true; Reason = "approved" }
+}
+
+function New-ReviewReclassificationPrompt {
+    param([Parameter(Mandatory = $true)]$Review)
+
+    $priorReviewJson = $Review | ConvertTo-Json -Depth 12 -Compress
+    return @"
+The prior structured review is internally inconsistent: it returned verdict=approve while material_findings is non-empty.
+Do not perform a new review and do not introduce new findings. Reclassify only the supplied prior findings.
+If every prior finding is non-blocking, return verdict=approve, preserve policy_ok=true and tests_ok=true, set material_findings to [], and mention any useful caveats in summary.
+If any prior finding is genuinely blocking, return verdict=reject and keep only blocking issues in material_findings.
+The invariant is strict: approve requires an empty material_findings array. Only blockers belong in material_findings; non-blocking observations, style notes, and suggestions belong in summary.
+
+PRIOR STRUCTURED REVIEW
+$priorReviewJson
+"@
+}
+
+function Test-ClaudeMonthlySpendLimit {
+    param([AllowEmptyString()][string]$Message)
+    return -not [string]::IsNullOrWhiteSpace($Message) -and $Message -match '(?i)monthly spend limit'
+}
+
+function Get-ClaudeFallbackReason {
+    param([AllowEmptyString()][string]$Message)
+    if (Test-ClaudeMonthlySpendLimit -Message $Message) { return "CLAUDE_MONTHLY_SPEND_LIMIT" }
+    if (-not [string]::IsNullOrWhiteSpace($Message) -and $Message -match '(?i)401 OAuth access token has expired') {
+        return "CLAUDE_OAUTH_EXPIRED"
+    }
+    return $null
+}
+
+function Invoke-ClaudeStructuredWithCodexFallback {
+    param(
+        [Parameter(Mandatory = $true)][string]$Stage,
+        [Parameter(Mandatory = $true)][string]$Claude,
+        [Parameter(Mandatory = $true)][string[]]$ClaudeArguments,
+        [Parameter(Mandatory = $true)][string]$Codex,
+        [Parameter(Mandatory = $true)][string]$Prompt,
+        [Parameter(Mandatory = $true)][string]$FallbackSystemPrompt,
+        [Parameter(Mandatory = $true)][string]$SchemaPath,
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [Parameter(Mandatory = $true)][string]$ClaudeStdoutPath,
+        [Parameter(Mandatory = $true)][string]$ClaudeStderrPath,
+        [Parameter(Mandatory = $true)][string]$CodexResultPath,
+        [Parameter(Mandatory = $true)][string]$CodexStdoutPath,
+        [Parameter(Mandatory = $true)][string]$CodexStderrPath,
+        [Parameter(Mandatory = $true)][bool]$FallbackEnabled,
+        [string[]]$CodexPrefixArguments = @()
+    )
+    $claudeRun = Invoke-Captured -FilePath $Claude -Arguments $ClaudeArguments -WorkingDirectory $WorkingDirectory -InputText $Prompt -StdoutPath $ClaudeStdoutPath -StderrPath $ClaudeStderrPath -AllowFailure
+    if ($claudeRun.ExitCode -eq 0) {
+        $structured = Get-ClaudeStructuredOutput -JsonText $claudeRun.Output
+        return [pscustomobject]@{
+            Backend = "claude"
+            Envelope = $structured.Envelope
+            Value = $structured.Value
+            ClaudeFailure = $null
+        }
+    }
+
+    $failureMessage = Get-ClaudeFailureMessage -JsonText $claudeRun.Output
+    $fallbackReason = Get-ClaudeFallbackReason -Message $failureMessage
+    if (-not $FallbackEnabled -or $null -eq $fallbackReason) {
+        throw "Claude $Stage failed: $failureMessage"
+    }
+
+    Write-RunLog "Claude $Stage is unavailable with $fallbackReason. Starting an isolated read-only Codex fallback."
+    $fallbackPrompt = $FallbackSystemPrompt + "`n`n" + $Prompt
+    $codexArguments = @($CodexPrefixArguments) + @(
+        "exec", "-",
+        "--sandbox", "read-only",
+        "--cd", $WorkingDirectory,
+        "--ephemeral",
+        "--ignore-user-config",
+        "--output-schema", $SchemaPath,
+        "--output-last-message", $CodexResultPath,
+        "--color", "never"
+    )
+    $codexRun = Invoke-Captured -FilePath $Codex -Arguments $codexArguments -WorkingDirectory $WorkingDirectory -InputText $fallbackPrompt -StdoutPath $CodexStdoutPath -StderrPath $CodexStderrPath -AllowFailure
+    if ($codexRun.ExitCode -ne 0) {
+        throw "Codex $Stage fallback failed: $(Get-CodexFailureMessage -ErrorText $codexRun.Error)"
+    }
+    if (-not (Test-Path -LiteralPath $CodexResultPath -PathType Leaf)) {
+        throw "Codex $Stage fallback did not produce a structured result"
+    }
+    $value = Get-Content -LiteralPath $CodexResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    return [pscustomobject]@{
+        Backend = "codex_availability_fallback"
+        Envelope = $null
+        Value = $value
+        ClaudeFailure = $fallbackReason
+    }
+}
+
 function Assert-PlanIdentity {
     param($Plan, [string]$ExpectedId, [string]$ExpectedDate)
     if ($Plan.solution_id -ne $ExpectedId) { throw "Claude plan solution_id does not match preflight" }
@@ -253,7 +435,20 @@ function Get-RepositoryTextBytes {
 function Main {
     $repository = (Resolve-Path -LiteralPath $RepositoryPath).Path
     $configPath = Resolve-RequiredFile -Path (Join-Path $repository ".automation\local-runner.config.json") -Label "Runner config"
-    $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+    $config = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $codexAvailabilityFallbackEnabled = (
+        $config.PSObject.Properties.Name -contains "fallbacks" -and
+        $null -ne $config.fallbacks -and
+        $config.fallbacks.PSObject.Properties.Name -contains "codex_on_claude_known_unavailability" -and
+        [bool]$config.fallbacks.codex_on_claude_known_unavailability
+    )
+    $reviewReclassificationEnabled = (
+        $config.PSObject.Properties.Name -contains "review" -and
+        $null -ne $config.review -and
+        $config.review.PSObject.Properties.Name -contains "reclassify_inconsistent_approve_once" -and
+        $config.review.reclassify_inconsistent_approve_once -is [bool] -and
+        $config.review.reclassify_inconsistent_approve_once
+    )
     $planSchemaPath = Resolve-RequiredFile -Path (Join-Path $repository ".automation\local-plan.schema.json") -Label "Plan schema"
     $codexSchemaPath = Resolve-RequiredFile -Path (Join-Path $repository ".automation\local-codex-result.schema.json") -Label "Codex result schema"
     $reviewSchemaPath = Resolve-RequiredFile -Path (Join-Path $repository ".automation\local-review.schema.json") -Label "Review schema"
@@ -327,8 +522,8 @@ function Main {
         Invoke-Captured -FilePath $graphify -Arguments @("update", ".", "--no-cluster") -WorkingDirectory $runRepo -StdoutPath (Join-Path $runDir "graphify-before.stdout") -StderrPath (Join-Path $runDir "graphify-before.stderr") | Out-Null
         $graphBudget = [int]$config.context_budgets.graph_query_chars
         $planGraph = Invoke-GraphQuery -GraphifyExe $graphify -Repository $runRepo -Question "Map the existing daily MCP solutions, catalog topics, validators, dependency allowlist, documentation pattern, and exact relationships needed to add one non-duplicative solution. Return only the most relevant files and relationships." -Budget $graphBudget -EvidencePath (Join-Path $runDir "graphify-plan.txt")
-        $catalog = Get-Content -LiteralPath (Join-Path $runRepo "CATALOG.md") -Raw
-        $policy = Get-Content -LiteralPath (Join-Path $runRepo ".automation\content-policy.json") -Raw
+        $catalog = Get-Content -LiteralPath (Join-Path $runRepo "CATALOG.md") -Raw -Encoding UTF8
+        $policy = Get-Content -LiteralPath (Join-Path $runRepo ".automation\content-policy.json") -Raw -Encoding UTF8
         $baselineBytes = Get-RepositoryTextBytes -Repository $runRepo
         $script:Report.context_metrics["repository_text_bytes_baseline"] = $baselineBytes
 
@@ -355,10 +550,11 @@ $catalog
         Assert-ContextBudget -Name "plan_prompt" -Text $planPrompt -MaximumCharacters ([int]$config.context_budgets.plan_prompt_chars)
         $planPromptPath = Join-Path $runDir "claude-plan.prompt.txt"
         Write-Utf8NoBom -Path $planPromptPath -Text $planPrompt
-        $planSchema = (Get-Content -LiteralPath $planSchemaPath -Raw | ConvertFrom-Json) | ConvertTo-Json -Depth 20 -Compress
+        $planSchema = (Get-Content -LiteralPath $planSchemaPath -Raw -Encoding UTF8 | ConvertFrom-Json) | ConvertTo-Json -Depth 20 -Compress
+        $codexPlanSchemaPath = Join-Path $runDir "codex-plan.schema.json"
+        Write-CodexCompatiblePlanSchema -SourcePath $planSchemaPath -DestinationPath $codexPlanSchemaPath
         $planSystemPrompt = "You are a constrained public open-source MCP planner. Follow the supplied task and return only the required structured JSON. Do not use tools or infer private context."
-        $claudePlan = Invoke-Captured -FilePath $claude -Arguments @("-p", "--safe-mode", "--system-prompt", $planSystemPrompt, "--permission-mode", "plan", "--model", "sonnet", "--effort", "medium", "--output-format", "json", "--max-turns", "3", "--no-session-persistence", "--json-schema", $planSchema, "--disallowedTools", "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task") -WorkingDirectory $runRepo -InputText $planPrompt -StdoutPath (Join-Path $runDir "claude-plan.output.json") -StderrPath (Join-Path $runDir "claude-plan.stderr")
-        $planResult = Get-ClaudeStructuredOutput -JsonText $claudePlan.Output
+        $planResult = Invoke-ClaudeStructuredWithCodexFallback -Stage "plan" -Claude $claude -ClaudeArguments @("-p", "--safe-mode", "--system-prompt", $planSystemPrompt, "--permission-mode", "plan", "--model", "sonnet", "--effort", "medium", "--output-format", "json", "--max-turns", "3", "--no-session-persistence", "--json-schema", $planSchema, "--disallowedTools", "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task") -Codex $codex -Prompt $planPrompt -FallbackSystemPrompt $planSystemPrompt -SchemaPath $codexPlanSchemaPath -WorkingDirectory $runRepo -ClaudeStdoutPath (Join-Path $runDir "claude-plan.output.json") -ClaudeStderrPath (Join-Path $runDir "claude-plan.stderr") -CodexResultPath (Join-Path $runDir "codex-plan.output.json") -CodexStdoutPath (Join-Path $runDir "codex-plan.stdout") -CodexStderrPath (Join-Path $runDir "codex-plan.stderr") -FallbackEnabled $codexAvailabilityFallbackEnabled
         $plan = $planResult.Value
         Assert-PlanIdentity -Plan $plan -ExpectedId $solutionId -ExpectedDate $date
         $planJson = $plan | ConvertTo-Json -Depth 20
@@ -366,7 +562,12 @@ $catalog
         Write-Utf8NoBom -Path $planPath -Text $planJson
         $wslPlanPath = Convert-ToWslPath -WslExe $wsl -WindowsPath $planPath
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/validate_topic_policy.py", $wslPlanPath, "--category", [string]$plan.category) | Out-Null
-        if ($null -ne $planResult.Envelope.usage) { $script:Report["claude_plan_usage"] = $planResult.Envelope.usage }
+        $script:Report["planner_backend"] = $planResult.Backend
+        if ($planResult.Backend -ne "claude") {
+            $script:Report.degraded_model_independence = $true
+            $script:Report["planner_fallback_reason"] = $planResult.ClaudeFailure
+        }
+        if ($null -ne $planResult.Envelope -and $null -ne $planResult.Envelope.usage) { $script:Report["claude_plan_usage"] = $planResult.Envelope.usage }
         $script:Report["slug"] = [string]$plan.slug
         $script:Report["category"] = [string]$plan.category
         $script:Report.stages["claude_plan"] = "passed"
@@ -398,7 +599,7 @@ $implementationGraph
         $codexResultPath = Join-Path $runRepo ".automation\codex-local-result.output.json"
         $codexStdout = Join-Path $runDir "codex-events.stdout"
         $codexRun = Invoke-Captured -FilePath $codex -Arguments @("exec", "-", "--sandbox", "workspace-write", "--cd", $runRepo, "--ephemeral", "--output-schema", $codexSchemaPath, "--output-last-message", $codexResultPath, "--color", "never") -WorkingDirectory $runRepo -InputText $implementationPrompt -StdoutPath $codexStdout -StderrPath (Join-Path $runDir "codex.stderr")
-        $codexResult = Get-Content -LiteralPath $codexResultPath -Raw | ConvertFrom-Json
+        $codexResult = Get-Content -LiteralPath $codexResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ([string]$codexResult.solution_id -ne $solutionId -or [string]$codexResult.slug -ne [string]$plan.slug) { throw "Codex result identity does not match the validated plan" }
         $headAfterCodex = (Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "rev-parse", "HEAD")).Output.Trim()
         if ($headAfterCodex -ne $baseHead) { throw "Codex created a commit, which is outside its authorization" }
@@ -407,6 +608,11 @@ $implementationGraph
 
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/validate_daily_delta.py", "--root", $wslRepo, "--expected-id", $solutionId, "--expected-slug", [string]$plan.slug) -StdoutPath (Join-Path $runDir "delta-before.stdout") -StderrPath (Join-Path $runDir "delta-before.stderr") | Out-Null
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/validate_solution.py", "$wslRepo/$solutionRelative", "--install", "--audit") -StdoutPath (Join-Path $runDir "solution-validation.stdout") -StderrPath (Join-Path $runDir "solution-validation.stderr") | Out-Null
+        $generatedLockPath = Join-Path $runRepo (($solutionRelative + "/package-lock.json") -replace "/", "\")
+        if (Test-Path -LiteralPath $generatedLockPath -PathType Leaf) {
+            Remove-Item -LiteralPath $generatedLockPath -Force
+            $script:Report["generated_package_lock_removed"] = $true
+        }
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/validate_daily_delta.py", "--root", $wslRepo, "--expected-id", $solutionId, "--expected-slug", [string]$plan.slug) -StdoutPath (Join-Path $runDir "delta-after.stdout") -StderrPath (Join-Path $runDir "delta-after.stderr") | Out-Null
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/scan_secrets.py", "$wslRepo/$solutionRelative") -StdoutPath (Join-Path $runDir "secret-scan.stdout") -StderrPath (Join-Path $runDir "secret-scan.stderr") | Out-Null
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/validate_topic_policy.py", "$wslRepo/$solutionRelative", "--category", [string]$plan.category) -StdoutPath (Join-Path $runDir "topic-policy.stdout") -StderrPath (Join-Path $runDir "topic-policy.stderr") | Out-Null
@@ -415,14 +621,33 @@ $implementationGraph
 
         Invoke-Captured -FilePath $graphify -Arguments @("update", ".", "--no-cluster") -WorkingDirectory $runRepo -StdoutPath (Join-Path $runDir "graphify-after.stdout") -StderrPath (Join-Path $runDir "graphify-after.stderr") | Out-Null
         $reviewGraph = Invoke-GraphQuery -GraphifyExe $graphify -Repository $runRepo -Question "Review the impact of $solutionRelative. Identify only boundary violations, unsafe relationships, validator gaps, duplicated purpose, and catalog inconsistencies relevant to approval." -Budget $graphBudget -EvidencePath (Join-Path $runDir "graphify-review.txt")
+        Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "add", "-N", "--", $solutionRelative) | Out-Null
         $diffStat = (Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "diff", "--stat", "--", "CATALOG.md", $solutionRelative)).Output
-        $diffExcerptRaw = (Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "diff", "--no-ext-diff", "--unified=1", "--", "CATALOG.md", $solutionRelative)).Output
-        $diffExcerpt = Limit-Context -Text $diffExcerptRaw -MaximumCharacters 18000
+        $interfaceDiffRaw = (Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "diff", "--no-ext-diff", "--unified=1", "--", "$solutionRelative/package.json", "$solutionRelative/metadata.json", "$solutionRelative/src/server.ts", "$solutionRelative/src/schemas.ts")).Output
+        $coreDiffRaw = (Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "diff", "--no-ext-diff", "--unified=1", "--", "$solutionRelative/src")).Output
+        $testDiffRaw = (Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "diff", "--no-ext-diff", "--unified=1", "--", "$solutionRelative/tests")).Output
+        $docsDiffRaw = (Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "diff", "--no-ext-diff", "--unified=1", "--", "CATALOG.md", "$solutionRelative/README.md", "$solutionRelative/evaluations.xml")).Output
+        $diffExcerpt = @"
+INTERFACE AND CLOSED SCHEMAS
+$(Limit-Context -Text $interfaceDiffRaw -MaximumCharacters ([int]$config.context_budgets.review_interface_diff_chars))
+
+CORE SOURCE
+$(Limit-Context -Text $coreDiffRaw -MaximumCharacters ([int]$config.context_budgets.review_core_diff_chars))
+
+TESTS
+$(Limit-Context -Text $testDiffRaw -MaximumCharacters ([int]$config.context_budgets.review_test_diff_chars))
+
+PUBLIC DOCS AND EVALUATIONS
+$(Limit-Context -Text $docsDiffRaw -MaximumCharacters ([int]$config.context_budgets.review_docs_diff_chars))
+"@
         $reviewPrompt = @"
 Act as the final read-only reviewer. Approve only if the validated plan was implemented, the public topic boundary is respected, the MCP is genuinely useful, and the deterministic evidence is sufficient.
 Use the targeted Graphify impact context and bounded diff excerpt. Do not use tools or edit files.
 The fixed gates already passed: delta boundary, dependency allowlist, TypeScript compilation, all tests including stdio integration, npm high-severity audit, secret scan, topic scan, and catalog validation.
-Return only the JSON required by the supplied review schema. Reject with concise material findings if any blocking issue remains.
+        Return only the JSON required by the supplied review schema. Reject with concise material findings if any blocking issue remains.
+        The review decision must be internally consistent: approve requires policy_ok=true, tests_ok=true, and an empty material_findings array. Only blocking issues belong in material_findings. Put non-blocking observations, style notes, dependency curiosities, and suggestions in summary instead.
+        Valid example: {"verdict":"approve","policy_ok":true,"tests_ok":true,"material_findings":[],"summary":"The bounded implementation is approved; one non-blocking style note is recorded here."}
+        Invalid example: {"verdict":"approve","policy_ok":true,"tests_ok":true,"material_findings":["minor observation"]}
 
 PLAN
 $planJson
@@ -438,23 +663,59 @@ $diffExcerpt
 "@
         Assert-ContextBudget -Name "review_prompt" -Text $reviewPrompt -MaximumCharacters ([int]$config.context_budgets.review_prompt_chars)
         Write-Utf8NoBom -Path (Join-Path $runDir "claude-review.prompt.txt") -Text $reviewPrompt
-        $reviewSchema = (Get-Content -LiteralPath $reviewSchemaPath -Raw | ConvertFrom-Json) | ConvertTo-Json -Depth 20 -Compress
-        $reviewSystemPrompt = "You are a constrained public open-source code reviewer. Judge only the supplied evidence and return only the required structured JSON. Do not use tools or infer private context."
-        $claudeReview = Invoke-Captured -FilePath $claude -Arguments @("-p", "--safe-mode", "--system-prompt", $reviewSystemPrompt, "--permission-mode", "plan", "--model", "sonnet", "--effort", "medium", "--output-format", "json", "--max-turns", "4", "--no-session-persistence", "--json-schema", $reviewSchema, "--disallowedTools", "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task") -WorkingDirectory $runRepo -InputText $reviewPrompt -StdoutPath (Join-Path $runDir "claude-review.output.json") -StderrPath (Join-Path $runDir "claude-review.stderr")
-        $reviewResult = Get-ClaudeStructuredOutput -JsonText $claudeReview.Output
+        $reviewSchema = (Get-Content -LiteralPath $reviewSchemaPath -Raw -Encoding UTF8 | ConvertFrom-Json) | ConvertTo-Json -Depth 20 -Compress
+        $reviewSystemPrompt = "You are a constrained public open-source code reviewer. Judge only the supplied evidence and return only the required structured JSON. Do not use tools or infer private context. Approve only with policy_ok=true, tests_ok=true, and material_findings=[]. Only blocking issues belong in material_findings; put all non-blocking caveats in summary."
+        $reviewClaudeArguments = @("-p", "--safe-mode", "--system-prompt", $reviewSystemPrompt, "--permission-mode", "plan", "--model", "sonnet", "--effort", "medium", "--output-format", "json", "--max-turns", "4", "--no-session-persistence", "--json-schema", $reviewSchema, "--disallowedTools", "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task")
+        $reviewResult = Invoke-ClaudeStructuredWithCodexFallback -Stage "review" -Claude $claude -ClaudeArguments $reviewClaudeArguments -Codex $codex -Prompt $reviewPrompt -FallbackSystemPrompt $reviewSystemPrompt -SchemaPath $reviewSchemaPath -WorkingDirectory $runRepo -ClaudeStdoutPath (Join-Path $runDir "claude-review.output.json") -ClaudeStderrPath (Join-Path $runDir "claude-review.stderr") -CodexResultPath (Join-Path $runDir "codex-review.output.json") -CodexStdoutPath (Join-Path $runDir "codex-review.stdout") -CodexStderrPath (Join-Path $runDir "codex-review.stderr") -FallbackEnabled $codexAvailabilityFallbackEnabled
         $review = $reviewResult.Value
-        if ([string]$review.verdict -ne "approve" -or -not $review.policy_ok -or -not $review.tests_ok -or @($review.material_findings).Count -ne 0) {
-            throw "Claude review rejected the generated solution"
+        $script:Report["reviewer_backend"] = $reviewResult.Backend
+        if ($reviewResult.Backend -ne "claude") {
+            $script:Report.degraded_model_independence = $true
+            $script:Report["reviewer_fallback_reason"] = $reviewResult.ClaudeFailure
         }
-        if ($null -ne $reviewResult.Envelope.usage) { $script:Report["claude_review_usage"] = $reviewResult.Envelope.usage }
+        if ($null -ne $reviewResult.Envelope -and $null -ne $reviewResult.Envelope.usage) { $script:Report["claude_review_usage"] = $reviewResult.Envelope.usage }
+
+        $reviewDecision = Get-ReviewDecision -Review $review
+        $script:Report["review_reclassification_attempted"] = $false
+        if ($reviewDecision.Reason -eq "approve_with_material_findings_inconsistent" -and $reviewReclassificationEnabled) {
+            $script:Report["review_initial_backend"] = $reviewResult.Backend
+            $script:Report["review_initial_verdict"] = [string]$review.verdict
+            $script:Report["review_initial_material_findings"] = @($review.material_findings)
+            $script:Report["review_initial_decision_reason"] = $reviewDecision.Reason
+            $script:Report["review_reclassification_attempted"] = $true
+            Write-RunLog "Review returned approve with material findings. Starting one constrained classification-only retry."
+
+            $reclassificationPrompt = New-ReviewReclassificationPrompt -Review $review
+            Write-Utf8NoBom -Path (Join-Path $runDir "review-reclassification.prompt.txt") -Text $reclassificationPrompt
+            $reclassificationSystemPrompt = "Correct only the internal classification of the supplied prior review. Do not add findings or perform a new review. Approve requires material_findings=[]. If any supplied finding is blocking, reject. Return only the required structured JSON and use no tools."
+            $reclassificationClaudeArguments = @("-p", "--safe-mode", "--system-prompt", $reclassificationSystemPrompt, "--permission-mode", "plan", "--model", "sonnet", "--effort", "medium", "--output-format", "json", "--max-turns", "1", "--no-session-persistence", "--json-schema", $reviewSchema, "--disallowedTools", "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task")
+            $reviewResult = Invoke-ClaudeStructuredWithCodexFallback -Stage "review-reclassification" -Claude $claude -ClaudeArguments $reclassificationClaudeArguments -Codex $codex -Prompt $reclassificationPrompt -FallbackSystemPrompt $reclassificationSystemPrompt -SchemaPath $reviewSchemaPath -WorkingDirectory $runRepo -ClaudeStdoutPath (Join-Path $runDir "claude-review-reclassification.output.json") -ClaudeStderrPath (Join-Path $runDir "claude-review-reclassification.stderr") -CodexResultPath (Join-Path $runDir "codex-review-reclassification.output.json") -CodexStdoutPath (Join-Path $runDir "codex-review-reclassification.stdout") -CodexStderrPath (Join-Path $runDir "codex-review-reclassification.stderr") -FallbackEnabled $codexAvailabilityFallbackEnabled
+            $review = $reviewResult.Value
+            $script:Report["review_reclassification_backend"] = $reviewResult.Backend
+            $script:Report["reviewer_backend"] = $reviewResult.Backend
+            if ($reviewResult.Backend -ne "claude") {
+                $script:Report.degraded_model_independence = $true
+                $script:Report["review_reclassification_fallback_reason"] = $reviewResult.ClaudeFailure
+            }
+            if ($null -ne $reviewResult.Envelope -and $null -ne $reviewResult.Envelope.usage) { $script:Report["claude_review_reclassification_usage"] = $reviewResult.Envelope.usage }
+            $reviewDecision = Get-ReviewDecision -Review $review
+        }
+
+        $script:Report["review_verdict"] = [string]$review.verdict
+        $script:Report["review_material_findings"] = @($review.material_findings)
+        $script:Report["review_decision_reason"] = $reviewDecision.Reason
+        if (-not $reviewDecision.Pass) {
+            throw "Independent review did not approve the generated solution: $($reviewDecision.Reason)"
+        }
         $script:Report.stages["claude_review"] = "approved"
+        $script:Report.stages["independent_review"] = "approved"
         $promptChars = [int64]$script:Report.context_metrics.plan_prompt_chars + [int64]$script:Report.context_metrics.implementation_prompt_chars + [int64]$script:Report.context_metrics.review_prompt_chars
         $script:Report.context_metrics["combined_prompt_chars"] = $promptChars
         $script:Report.context_metrics["combined_estimated_tokens_at_4_chars"] = [Math]::Ceiling($promptChars / 4.0)
         if ($baselineBytes -gt 0) {
             $script:Report.context_metrics["prompt_chars_vs_repository_bytes_percent"] = [Math]::Round(($promptChars / [double]$baselineBytes) * 100, 2)
         }
-        Write-RunLog "Claude review approved the bounded, tested implementation."
+        Write-RunLog "Independent review approved the bounded, tested implementation."
 
         if ($DryRun) {
             $script:Report.status = "dry_run_passed"
