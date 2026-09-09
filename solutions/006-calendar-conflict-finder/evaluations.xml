@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair>
+    <question>Two events run from 09:00 to 10:00 and from 09:30 to 10:30. What overlap is returned?</question>
+    <answer>The intervals overlap from 09:30 to 10:00 for 30 minutes.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>One event ends exactly when another event starts. Is that pair reported as a conflict?</question>
+    <answer>No. The server uses half-open interval semantics, so touching boundaries do not overlap.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A VEVENT contains DTSTART but no DTEND. How does list_events handle the entry?</question>
+    <answer>It skips that VEVENT and returns a warning with code missing_dtend without crashing.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A calendar file contains only a VTIMEZONE component and no VEVENT. What event count is returned?</question>
+    <answer>Zero events are returned and the file is processed without an error.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A weekly RRULE has COUNT=6 and its third occurrence overlaps a one-off event. Which occurrence index is reported?</question>
+    <answer>The zero-based occurrence_index is 2 and the pair is reported as one conflict.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What happens when a requested calendar path resolves outside working_directory?</question>
+    <answer>The operation fails with outside_working_directory before the outside file is read.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many detailed conflicts are returned when 780 pairwise conflicts are found?</question>
+    <answer>500 conflicts are returned, conflict_count is 780, and conflicts_omitted is 280.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How is an all-day event with DTSTART VALUE=DATE and the next date as DTEND interpreted?</question>
+    <answer>It spans UTC midnight to the exclusive next midnight and is marked all_day true.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How is a floating ICS date-time with neither Z nor TZID normalized?</question>
+    <answer>It is interpreted as UTC and a floating_time_assumed_utc warning is returned.</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What external services or credentials are required to list events and find conflicts?</question>
+    <answer>None. The server uses local file reads only and has no network client, telemetry, account, login, or API key.</answer>
+  </qa_pair>
+</evaluation>
