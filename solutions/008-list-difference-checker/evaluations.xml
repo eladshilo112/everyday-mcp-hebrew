@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair id="01">
+    <question>Compare pear and apple on the left with apple and plum on the right using exact defaults.</question>
+    <input><![CDATA[{"left":"pear\napple","right":"apple\nplum"}]]></input>
+    <answer><![CDATA[{"left_only":["pear"],"right_only":["plum"],"shared":["apple"],"duplicates_left":[],"duplicates_right":[],"input_items":[2,2],"records":[4,4,0],"truncated":false}]]></answer>
+  </qa_pair>
+  <qa_pair id="02">
+    <question>Compare two occurrences of a on the left with an empty right list. Count membership and duplicate references separately.</question>
+    <input><![CDATA[{"left":"a\na","right":""}]]></input>
+    <answer><![CDATA[{"left_only":["a"],"right_only":[],"shared":[],"duplicates_left":[["a",2]],"duplicates_right":[],"input_items":[2,0],"records":[4,4,0],"truncated":false}]]></answer>
+  </qa_pair>
+  <qa_pair id="03">
+    <question>Does identical membership with two left a occurrences and three right b occurrences remain shared despite order and multiplicity?</question>
+    <input><![CDATA[{"left":"a\na\nb","right":"b\nb\nb\na"}]]></input>
+    <answer><![CDATA[{"left_only":[],"right_only":[],"shared":["a","b"],"duplicates_left":[["a",2]],"duplicates_right":[["b",3]],"input_items":[3,4],"records":[12,12,0],"truncated":false}]]></answer>
+  </qa_pair>
+  <qa_pair id="04">
+    <question>Without options, are case, outer whitespace and precomposed versus decomposed accents kept distinct?</question>
+    <input><![CDATA[{"left":"A\n apple \né","right":"a\napple\ne\u0301"}]]></input>
+    <answer><![CDATA[{"left_only":["A"," apple ","é"],"right_only":["a","apple","e\u0301"],"shared":[],"duplicates_left":[],"duplicates_right":[],"input_items":[3,3],"records":[6,6,0],"truncated":false}]]></answer>
+  </qa_pair>
+  <qa_pair id="05">
+    <question>With trimming alone, do surrounding spaces merge apple entries and make a whitespace-only line empty?</question>
+    <input><![CDATA[{"left":" apple \n \napple","right":"apple","options":{"trim":true}}]]></input>
+    <answer><![CDATA[{"left_only":[],"right_only":[],"shared":["apple"],"duplicates_left":[["apple",2]],"duplicates_right":[],"input_items":[2,1],"records":[5,5,0],"truncated":false}]]></answer>
+  </qa_pair>
+  <qa_pair id="06">
+    <question>With ASCII folding alone, does AZ match az while non-ASCII uppercase letters remain unchanged?</question>
+    <input><![CDATA[{"left":"AZ\nÄ\nΣ\nİ","right":"az\nä\nσ\ni","options":{"ascii_case_fold":true}}]]></input>
+    <answer><![CDATA[{"left_only":["Ä","Σ","İ"],"right_only":["ä","σ","i"],"shared":["az"],"duplicates_left":[],"duplicates_right":[],"input_items":[4,4],"records":[8,8,0],"truncated":false}]]></answer>
+  </qa_pair>
+  <qa_pair id="07">
+    <question>With NFC alone, does a canonical accent match while a fullwidth Latin A remains distinct from ASCII A?</question>
+    <input><![CDATA[{"left":"é\nＡ","right":"e\u0301\nA","options":{"nfc":true}}]]></input>
+    <answer><![CDATA[{"left_only":["Ａ"],"right_only":["A"],"shared":["é"],"duplicates_left":[],"duplicates_right":[],"input_items":[2,2],"records":[4,4,0],"truncated":false}]]></answer>
+  </qa_pair>
+  <qa_pair id="08">
+    <question>With all options, apply trim then ASCII folding then NFC. Does decomposed E plus accent become lowercase é while precomposed É stays uppercase?</question>
+    <input><![CDATA[{"left":" E\u0301 \né\nÉ\n \nAPPLE\napple ","right":"é\napple","options":{"trim":true,"ascii_case_fold":true,"nfc":true}}]]></input>
+    <answer><![CDATA[{"left_only":["É"],"right_only":[],"shared":["é","apple"],"duplicates_left":[["é",2],["apple",2]],"duplicates_right":[],"input_items":[5,2],"records":[11,11,0],"truncated":false}]]></answer>
+  </qa_pair>
+  <qa_pair id="09">
+    <question>Compare mixed Hebrew, emoji, prototype-looking keys and a formula-looking line across LF and CRLF with blank and trailing lines.</question>
+    <input><![CDATA[{"left":"__proto__\r\n\nשלום\r\n🍎\nconstructor\n=1+1\n","right":"🍎\nשלום\n__proto__"}]]></input>
+    <answer><![CDATA[{"left_only":["constructor","=1+1"],"right_only":[],"shared":["__proto__","שלום","🍎"],"duplicates_left":[],"duplicates_right":[],"input_items":[5,3],"records":[8,8,0],"truncated":false}]]></answer>
+  </qa_pair>
+  <qa_pair id="10">
+    <question>Repeat x on 300 LF-separated lines in each input. With a global 500-reference budget, what are exact aggregate counts and visible groups?</question>
+    <input><![CDATA[{"left":"x","right":"x","repeat":300}]]></input>
+    <answer><![CDATA[{"left_only":[],"right_only":[],"shared":["x"],"duplicates_left":[],"duplicates_right":[],"input_items":[300,300],"records":[1200,500,700],"truncated":true}]]></answer>
+  </qa_pair>
+</evaluation>
