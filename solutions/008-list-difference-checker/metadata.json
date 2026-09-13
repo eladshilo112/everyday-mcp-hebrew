@@ -1,0 +1,15 @@
+{
+  "id": "008",
+  "date": "2026-09-13",
+  "slug": "list-difference-checker",
+  "title_he": "משווה רשימות מקומי",
+  "title_en": "Local List Difference Checker",
+  "category": "productivity",
+  "description_he": "השוואת שתי רשימות טקסט לזיהוי פריטים ייחודיים, משותפים וכפילויות, עם הטקסט המקורי ומספרי שורות.",
+  "audience_he": "משתמשי Claude Code, Codex או לקוח MCP שרוצים להשוות שתי רשימות טקסט בלי חשבון ובלי העלאת קבצים.",
+  "benefit_he": "מקבלים מיד פריטים שקיימים רק בכל רשימה, פריטים משותפים וכפילויות, עם מספרי שורות שמאפשרים לבדוק כל תוצאה.",
+  "tags": ["lists", "comparison", "productivity", "local-first", "read-only"],
+  "transport": "stdio",
+  "tools": ["compare_lists"],
+  "safety": { "read_only": true, "destructive": false, "network": false, "telemetry": false }
+}
