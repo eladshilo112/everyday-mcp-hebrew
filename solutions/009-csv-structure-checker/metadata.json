@@ -1,0 +1,11 @@
+{
+  "id": "009", "date": "2026-09-16", "slug": "csv-structure-checker",
+  "title_he": "בודק מבנה קובצי CSV", "title_en": "Local CSV Structure Checker",
+  "category": "files",
+  "description_he": "בדיקת מרכאות, מספר עמודות וכותרות בקובץ CSV מקומי, בלי לחשוף תוכן תאים.",
+  "audience_he": "משתמשי Claude Code, Codex או לקוח MCP שרוצים לבדוק קובץ CSV מקומי לפני ייבוא.",
+  "benefit_he": "דוח עם סוג התקלה ומיקומה, בלי לשנות קבצים ובלי לשלוח מידע לרשת.",
+  "transport": "stdio", "tools": ["check_csv_structure"],
+  "tags": ["csv", "files", "local-first", "read-only"],
+  "safety": { "read_only": true, "destructive": false, "network": false, "telemetry": false }
+}
