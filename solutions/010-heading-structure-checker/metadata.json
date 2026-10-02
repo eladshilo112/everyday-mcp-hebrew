@@ -1,0 +1,11 @@
+{
+  "id": "010", "date": "2026-10-02", "slug": "heading-structure-checker",
+  "title_he": "בודק מבנה כותרות נגיש למסמכי Markdown", "title_en": "Accessible Heading Structure Checker",
+  "category": "accessibility",
+  "description_he": "בדיקת היררכיית כותרות בקובצי Markdown מקומיים, כולל רמות חסרות, H1, כותרות ריקות וכפילויות.",
+  "audience_he": "כותבי תיעוד, בלוגים ואתרים סטטיים שמנהלים קובצי Markdown מקומיים.",
+  "benefit_he": "ממצא ממוין עם מספר שורה מאפשר לתקן בעיות ניווט ונגישות לפני פרסום.",
+  "transport": "stdio", "tools": ["scan_heading_structure", "list_markdown_files"],
+  "tags": ["markdown", "accessibility", "local-first", "read-only"],
+  "safety": { "read_only": true, "destructive": false, "network": false, "telemetry": false }
+}
