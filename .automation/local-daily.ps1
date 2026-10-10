@@ -708,7 +708,7 @@ $implementationGraph
         Write-Utf8NoBom -Path (Join-Path $runDir "codex-implementation.prompt.txt") -Text $implementationPrompt
         $codexResultPath = Join-Path $runRepo ".automation\codex-local-result.output.json"
         $codexStdout = Join-Path $runDir "codex-events.stdout"
-        $codexRun = Invoke-Captured -FilePath $codex -Arguments @("exec", "-", "--sandbox", "workspace-write", "--cd", $runRepo, "--ephemeral", "--output-schema", $codexSchemaPath, "--output-last-message", $codexResultPath, "--color", "never") -WorkingDirectory $runRepo -InputText $implementationPrompt -StdoutPath $codexStdout -StderrPath (Join-Path $runDir "codex.stderr")
+        $codexRun = Invoke-Captured -FilePath $codex -Arguments @("exec", "-", "--sandbox", "workspace-write", "--cd", $runRepo, "--ephemeral", "--ignore-user-config", "--output-schema", $codexSchemaPath, "--output-last-message", $codexResultPath, "--color", "never") -WorkingDirectory $runRepo -InputText $implementationPrompt -StdoutPath $codexStdout -StderrPath (Join-Path $runDir "codex.stderr")
         Add-RunArtifact -RelativePath "codex-events.stdout" -Kind "implementation-output" -Stage "implementation"
         Add-RunArtifact -RelativePath "codex.stderr" -Kind "implementation-error" -Stage "implementation"
         $codexResult = Get-Content -LiteralPath $codexResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
