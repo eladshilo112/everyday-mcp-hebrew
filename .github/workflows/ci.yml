@@ -36,6 +36,7 @@ jobs:
       - name: Validate catalog and automation guards
         run: |
           python scripts/validate_catalog.py
+          python scripts/validate_coordination.py
           python -m unittest discover -s tests -v
           python scripts/scan_secrets.py .
 
@@ -43,7 +44,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for solution in solutions/*; do
+          shopt -s nullglob
+          solution_dirs=(solutions/[0-9][0-9][0-9]-*/)
+          if ((${#solution_dirs[@]} == 0)); then
+            echo "No solution directories found" >&2
+            exit 1
+          fi
+          for solution in "${solution_dirs[@]}"; do
+            if [[ ! -f "${solution}/package.json" ]]; then
+              echo "SKIP_NON_SOLUTION: ${solution}"
+              continue
+            fi
+            echo "SOLUTION_CANDIDATE: ${solution}"
             python scripts/validate_solution.py "$solution" --install --audit
           done
 

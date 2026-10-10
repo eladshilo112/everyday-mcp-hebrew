@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "source_of_truth": {
+    "run_status": "run-manifest.json",
+    "run_evidence": "run-report.json",
+    "human_handoff": "local-handoff.md",
+    "repository_status": "git-and-github-pull-request"
+  },
+  "roles": [
+    {
+      "id": "owner_chat",
+      "responsibility": "scope_acceptance_and_next_action",
+      "writes": ["handoff_decision"]
+    },
+    {
+      "id": "claude_planner",
+      "responsibility": "bounded_plan_and_independent_review",
+      "writes": ["plan", "review"]
+    },
+    {
+      "id": "codex_implementer",
+      "responsibility": "implementation_in_disposable_clone",
+      "writes": ["solution_delta"]
+    },
+    {
+      "id": "deterministic_gates",
+      "responsibility": "tests_security_policy_and_delta_validation",
+      "writes": ["validation_evidence"]
+    },
+    {
+      "id": "local_runner",
+      "responsibility": "orchestration_and_guarded_publication",
+      "writes": ["run_manifest", "run_report", "pull_request"]
+    }
+  ],
+  "stages": [
+    "initialized",
+    "preflight",
+    "planning",
+    "implementation",
+    "validation",
+    "review",
+    "publication",
+    "completed",
+    "failed"
+  ],
+  "concurrency": {
+    "max_daily_runs": 1,
+    "mutex_name": "Local\\EverydayMcpHebrewDaily",
+    "duplicate_date": "noop",
+    "branch_pattern": "daily/{date}"
+  },
+  "artifact_rules": {
+    "run_local_only": true,
+    "relative_paths_only": true,
+    "raw_prompts_never_published": true,
+    "one_owner_per_run": true,
+    "no_private_chat_identifiers_in_repository": true
+  },
+  "handoff": {
+    "sync_key": "run_id",
+    "required_fields": [
+      "run_id",
+      "status",
+      "phase",
+      "next_action",
+      "blocked_reason",
+      "artifacts"
+    ]
+  }
+}
