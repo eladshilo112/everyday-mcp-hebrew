@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair><question>What issue does ![](image.png) produce in a Markdown file?</question><answer>missing</answer></qa_pair>
+  <qa_pair><question>What issue does ![Sunset over the mountains](image.png) produce?</question><answer>No finding; one image is counted.</answer></qa_pair>
+  <qa_pair><question>What issue does an HTML img tag without an alt attribute produce?</question><answer>missing</answer></qa_pair>
+  <qa_pair><question>What issue does an HTML img with alt="" or whitespace-only alt produce?</question><answer>empty</answer></qa_pair>
+  <qa_pair><question>How are IMAGE, photo123 and img123 classified as entire alt values?</question><answer>All three produce generic findings, regardless of case.</answer></qa_pair>
+  <qa_pair><question>A tree has docs/a.mdx, node_modules/a.md, .git/a.html and a.txt, each with one bad image. How many are scanned?</question><answer>Only docs/a.mdx is scanned, producing one finding.</answer></qa_pair>
+  <qa_pair><question>One valid UTF-8 file contains 517 missing-alt images. What are the returned and omitted counts?</question><answer>500 findings are returned; findings_omitted is 17; total_findings and by_issue.missing are 517.</answer></qa_pair>
+  <qa_pair><question>File a.md has two missing findings and b.html has one empty and one generic finding. What are the report counts?</question><answer>total_findings is 4; by_issue is missing=2, empty=1, generic=1; each file summary has total=2.</answer></qa_pair>
+  <qa_pair><question>What happens for an unchanged local directory scanned twice, and for a directory with no images?</question><answer>Repeated scans produce byte-identical JSON. A directory without images succeeds with zero images and an empty findings list.</answer></qa_pair>
+  <qa_pair><question>Does an unfinished tag &lt;img src="a.jpg" crash the parser or cause a download?</question><answer>No. It produces a missing finding. The scanner never opens the image target or makes a network request.</answer></qa_pair>
+</evaluation>

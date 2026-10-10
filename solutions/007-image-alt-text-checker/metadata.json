@@ -1,0 +1,12 @@
+{
+  "id": "007", "date": "2026-09-11", "slug": "image-alt-text-checker",
+  "title_he": "בודק טקסט חלופי לתמונות במסמכים מקומיים",
+  "title_en": "Local Image Alt-Text Accessibility Checker",
+  "category": "accessibility",
+  "description_he": "סריקת מסמכי Markdown, MDX ו־HTML לאיתור טקסט חלופי חסר, ריק או גנרי בתמונות.",
+  "audience_he": "כותבי תיעוד, בלוגים ואתרים סטטיים מקומיים",
+  "benefit_he": "בדיקה מקומית וניתנת לשחזור, ללא חשבון, רשת או שינוי קבצים.",
+  "tags": ["accessibility", "images", "alt-text", "local-first", "read-only"],
+  "transport": "stdio", "tools": ["scan_alt_text", "get_alt_text_report"],
+  "safety": { "read_only": true, "destructive": false, "network": false, "telemetry": false }
+}

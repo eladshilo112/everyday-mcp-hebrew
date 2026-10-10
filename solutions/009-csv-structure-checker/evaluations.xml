@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair id="01">
+    <question>UTF-8 Hebrew headers and CRLF form two valid records.</question>
+    <input><![CDATA[{"text": "שם,עיר\r\nבדיקה,דוגמה\r\n"}]]></input>
+    <answer><![CDATA[{"ok": true, "complete": true, "status": "complete", "records_completed": 2, "data_records": 1, "expected_columns": 2, "findings": [], "error": null}]]></answer>
+  </qa_pair>
+  <qa_pair id="02">
+    <question>Quoted multiline content preserves physical row locations.</question>
+    <input><![CDATA[{"text": "a,b\n\"x,y\",\"line\nnext\"\nshort"}]]></input>
+    <answer><![CDATA[{"ok": false, "complete": true, "status": "complete", "records_completed": 3, "data_records": 2, "expected_columns": 2, "findings": [{"code": "COLUMN_COUNT", "record": 3, "line": 4, "expected": 2, "actual": 1}], "error": null}]]></answer>
+  </qa_pair>
+  <qa_pair id="03">
+    <question>Empty and exact duplicate headers are reported in field order.</question>
+    <input><![CDATA[{"text": ",A,A, A,a"}]]></input>
+    <answer><![CDATA[{"ok": false, "complete": true, "status": "complete", "records_completed": 1, "data_records": 0, "expected_columns": 5, "findings": [{"code": "EMPTY_HEADER", "record": 1, "line": 1, "field": 1}, {"code": "DUPLICATE_HEADER", "record": 1, "line": 1, "field": 3}], "error": null}]]></answer>
+  </qa_pair>
+  <qa_pair id="04">
+    <question>Header checks are disabled explicitly while columns are still counted.</question>
+    <input><![CDATA[{"text": ",A,A\n1,2,3", "options": {"header": false}}]]></input>
+    <answer><![CDATA[{"ok": true, "complete": true, "status": "complete", "records_completed": 2, "data_records": 2, "expected_columns": 3, "findings": [], "error": null}]]></answer>
+  </qa_pair>
+  <qa_pair id="05">
+    <question>A bare quote terminates validation at the second record.</question>
+    <input><![CDATA[{"text": "a,b\nx\"y,z\n1"}]]></input>
+    <answer><![CDATA[{"ok": false, "complete": false, "status": "syntax_error", "records_completed": 1, "data_records": 0, "expected_columns": 2, "findings": [{"code": "BARE_QUOTE", "record": 2, "line": 2, "field": 1}], "error": {"code": "BARE_QUOTE"}}]]></answer>
+  </qa_pair>
+  <qa_pair id="06">
+    <question>Characters after closing quotes terminate validation immediately.</question>
+    <input><![CDATA[{"text": "a,b\n\"x\" ,y"}]]></input>
+    <answer><![CDATA[{"ok": false, "complete": false, "status": "syntax_error", "records_completed": 1, "data_records": 0, "expected_columns": 2, "findings": [{"code": "AFTER_CLOSING_QUOTE", "record": 2, "line": 2, "field": 1}], "error": {"code": "AFTER_CLOSING_QUOTE"}}]]></answer>
+  </qa_pair>
+  <qa_pair id="07">
+    <question>An unterminated multiline field reports the physical EOF line.</question>
+    <input><![CDATA[{"text": "a,b\nx,\"y\nz"}]]></input>
+    <answer><![CDATA[{"ok": false, "complete": false, "status": "syntax_error", "records_completed": 1, "data_records": 0, "expected_columns": 2, "findings": [{"code": "UNTERMINATED_QUOTE", "record": 2, "line": 3, "field": 2}], "error": {"code": "UNTERMINATED_QUOTE"}}]]></answer>
+  </qa_pair>
+  <qa_pair id="08">
+    <question>Explicit semicolon selection supports escaped double quotes.</question>
+    <input><![CDATA[{"text": "a;b\n\"x;y\";\"say \"\"hi\"\"\"", "options": {"delimiter": "semicolon"}}]]></input>
+    <answer><![CDATA[{"ok": true, "complete": true, "status": "complete", "records_completed": 2, "data_records": 1, "expected_columns": 2, "findings": [], "error": null}]]></answer>
+  </qa_pair>
+  <qa_pair id="09">
+    <question>Explicit tabs and an interior empty line preserve record counting.</question>
+    <input><![CDATA[{"text": "a\tb\n\n1\t2\n", "options": {"delimiter": "tab"}}]]></input>
+    <answer><![CDATA[{"ok": false, "complete": true, "status": "complete", "records_completed": 3, "data_records": 2, "expected_columns": 2, "findings": [{"code": "COLUMN_COUNT", "record": 2, "line": 2, "expected": 2, "actual": 1}], "error": null}]]></answer>
+  </qa_pair>
+  <qa_pair id="10">
+    <question>An empty file is reported explicitly without inventing records.</question>
+    <input><![CDATA[{"text": ""}]]></input>
+    <answer><![CDATA[{"ok": false, "complete": true, "status": "complete", "records_completed": 0, "data_records": 0, "expected_columns": null, "findings": [{"code": "EMPTY_FILE", "record": 0, "line": 1}], "error": null}]]></answer>
+  </qa_pair>
+</evaluation>

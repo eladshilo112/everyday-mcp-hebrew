@@ -1,0 +1,43 @@
+{
+  "name": "@everyday-mcp-hebrew/calendar-conflict-finder",
+  "version": "1.0.0",
+  "description": "Deterministic local read-only MCP server for finding conflicts in ICS calendars",
+  "type": "module",
+  "main": "dist/src/server.js",
+  "types": "dist/src/server.d.ts",
+  "bin": {
+    "everyday-calendar-conflict-finder-mcp": "dist/src/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "metadata.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/tests/overlap.test.js dist/tests/recurrence.test.js dist/tests/safety-malformed.test.js dist/tests/determinism-scale.test.js dist/tests/mcp-integration.test.js",
+    "start": "node dist/src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "calendar",
+    "ics",
+    "conflicts",
+    "local-first",
+    "read-only"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@types/node": "20.19.43",
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair>
+    <question>Analyze whitespace-only text. What clarity score, label, and issue count are returned?</question>
+    <answer>0, ללא טקסט, and 0 issues</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Analyze one short direct sentence containing no configured passive phrase or complex term. What clarity score, label, and issue count are returned?</question>
+    <answer>100, ברור, and 0 issues</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A single sentence contains exactly 40 words and no other issue. What long-sentence count and score are returned?</question>
+    <answer>0 long sentences and a score of 85</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A single sentence contains exactly 41 words and no other issue. Which issue, score, and label are returned?</question>
+    <answer>long_sentence, 72, and דורש שיפור</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A short sentence contains exactly one configured passive match and no other issue. Which issue type and score are returned?</question>
+    <answer>passive_voice and 92</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>A short sentence contains exactly one configured complex term and no other issue. Which issue type and score are returned?</question>
+    <answer>complex_term and 96</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>One long sentence contains 600 configured complex-term matches. What issue_count, issues_returned, and issues_omitted values are returned?</question>
+    <answer>601, 500, and 101</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Call check_clarity with both text and file_path. Which structured error code is returned?</question>
+    <answer>invalid_input</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Call list_issues with text longer than 200,000 Unicode code points. Which structured error code is returned?</question>
+    <answer>input_too_large</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Analyze two unpunctuated lines whose issue appears on the second line. Which one-based line number does list_issues report?</question>
+    <answer>2</answer>
+  </qa_pair>
+</evaluation>

@@ -1,0 +1,18 @@
+import { syncBuiltinESMExports } from "node:module";
+import net from "node:net";
+import tls from "node:tls";
+import http from "node:http";
+import https from "node:https";
+import dns from "node:dns";
+import dgram from "node:dgram";
+const deny = (): never => { throw new Error("NETWORK_FORBIDDEN_IN_TEST"); };
+Object.assign(net, { connect: deny, createConnection: deny });
+net.Socket.prototype.connect = deny;
+Object.assign(tls, { connect: deny });
+Object.assign(http, { request: deny, get: deny });
+Object.assign(https, { request: deny, get: deny });
+Object.assign(dns, { lookup: deny, resolve: deny });
+Object.assign(dns.promises, { lookup: deny, resolve: deny });
+Object.assign(dgram, { createSocket: deny });
+globalThis.fetch = deny;
+syncBuiltinESMExports();

@@ -1,0 +1,21 @@
+{
+  "id": "005",
+  "date": "2026-08-31",
+  "slug": "text-clarity-checker",
+  "title_he": "בודק בהירות טקסט לתקשורת",
+  "title_en": "Text Clarity Checker",
+  "category": "communication",
+  "description_he": "מנתח טקסט מקומי ומזהה משפטים ארוכים, ניסוחים סבילים וז'רגון לפי כללים קבועים, בלי לשנות את המקור ובלי לפנות לרשת.",
+  "audience_he": "לכל מי שרוצה לבדוק הודעה, מסמך או טיוטה לפני שליחה ולהפוך אותם לברורים וישירים יותר.",
+  "benefit_he": "ציון בהירות ורשימת בעיות יציבה וניתנת לשחזור, מקומית, ללא חשבון ובקריאה בלבד.",
+  "tags": ["communication", "writing", "clarity", "hebrew", "local-first", "read-only"],
+  "transport": "stdio",
+  "tools": ["check_clarity", "list_issues"],
+  "skill": "clear-writing-tips",
+  "safety": {
+    "read_only": true,
+    "destructive": false,
+    "network": false,
+    "telemetry": false
+  }
+}

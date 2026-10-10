@@ -1,0 +1,20 @@
+{
+  "id": "006",
+  "date": "2026-09-09",
+  "slug": "calendar-conflict-finder",
+  "title_he": "בודק התנגשויות יומן מקומי",
+  "title_en": "Local Calendar Conflict Finder",
+  "category": "personal-organization",
+  "description_he": "קורא קובצי ICS מקומיים, מרחיב חזרות יומיות ושבועיות בחלון מוגבל ומזהה שיבוצים חופפים בלי לשנות את הקבצים.",
+  "audience_he": "כל מי שמנהל כמה קובצי יומן מקומיים במקביל ורוצה לגלות שיבוצים כפולים מראש.",
+  "benefit_he": "רשימת אירועים והתנגשויות יציבה, מוגבלת וניתנת לשחזור, ללא רשת, חשבון או כתיבה לקבצים.",
+  "tags": ["personal-organization", "calendar", "ics", "conflicts", "local-first", "read-only"],
+  "transport": "stdio",
+  "tools": ["find_conflicts", "list_events", "check_overlap"],
+  "safety": {
+    "read_only": true,
+    "destructive": false,
+    "network": false,
+    "telemetry": false
+  }
+}

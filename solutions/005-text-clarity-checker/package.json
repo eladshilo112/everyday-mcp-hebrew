@@ -1,0 +1,45 @@
+{
+  "name": "@everyday-mcp-hebrew/text-clarity-checker",
+  "version": "1.0.0",
+  "description": "Deterministic local read-only MCP server for checking text clarity",
+  "type": "module",
+  "main": "dist/src/server.js",
+  "types": "dist/src/server.d.ts",
+  "bin": {
+    "everyday-text-clarity-checker-mcp": "dist/src/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "metadata.json",
+    "skill"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test dist/tests/clarity.test.js dist/tests/file-input.test.js dist/tests/lines-determinism.test.js dist/tests/mcp-integration.test.js dist/tests/scale-safety.test.js",
+    "start": "node dist/src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "hebrew",
+    "communication",
+    "writing",
+    "clarity",
+    "local-first",
+    "read-only"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@types/node": "20.19.43",
+    "typescript": "7.0.2"
+  }
+}
