@@ -719,6 +719,11 @@ $implementationGraph
         Set-RunPhase -Phase "validation" -Status "validation" -NextAction "Run the fixed solution, delta, secret, topic, and catalog gates."
         Write-RunLog "Codex implementation completed inside the disposable clone."
 
+        $catalogRepair = Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/ensure_catalog_entry.py", "--root", $wslRepo, "--solution", $solutionRelative) -StdoutPath (Join-Path $runDir "catalog-repair.stdout") -StderrPath (Join-Path $runDir "catalog-repair.stderr")
+        Add-RunArtifact -RelativePath "catalog-repair.stdout" -Kind "catalog-gate" -Stage "validation"
+        Add-RunArtifact -RelativePath "catalog-repair.stderr" -Kind "catalog-gate-error" -Stage "validation"
+        Write-RunLog ("Catalog gate: " + $catalogRepair.Output.Trim())
+
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/validate_solution.py", "$wslRepo/$solutionRelative", "--install", "--audit") -StdoutPath (Join-Path $runDir "solution-validation.stdout") -StderrPath (Join-Path $runDir "solution-validation.stderr") | Out-Null
         Add-RunArtifact -RelativePath "solution-validation.stdout" -Kind "validation-output" -Stage "validation"
         Add-RunArtifact -RelativePath "solution-validation.stderr" -Kind "validation-error" -Stage "validation"

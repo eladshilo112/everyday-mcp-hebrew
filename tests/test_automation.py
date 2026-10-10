@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from daily_patch import validate_patch_text  # noqa: E402
 from daily_preflight import discover  # noqa: E402
+from ensure_catalog_entry import ensure_catalog_entry  # noqa: E402
 from timezone_guard import jerusalem_time  # noqa: E402
 from validate_catalog import validate_catalog  # noqa: E402
 from validate_topic_policy import validate_category, validate_target  # noqa: E402
@@ -34,6 +35,66 @@ class TimezoneTests(unittest.TestCase):
 class CatalogTests(unittest.TestCase):
     def test_current_catalog_is_valid(self) -> None:
         self.assertEqual(validate_catalog(ROOT), [])
+
+    def test_catalog_repair_adds_a_safe_row_when_model_omits_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "solutions" / "011-calendar-reminder").mkdir(parents=True)
+            (root / "CATALOG.md").write_text(
+                '<div dir="rtl">\n\n| מספר | תאריך | פתרון | למי זה עוזר | בטיחות | תיקייה |\n\n</div>\n',
+                encoding="utf-8",
+            )
+            (root / "solutions" / "011-calendar-reminder" / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "id": "011",
+                        "date": "2026-10-11",
+                        "slug": "calendar-reminder",
+                        "title_he": "תזכורת יומן",
+                        "audience_he": "למי שמנהל משימות עם מועדים",
+                        "safety": {
+                            "read_only": True,
+                            "destructive": False,
+                            "network": False,
+                            "telemetry": False,
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(ensure_catalog_entry(root, "solutions/011-calendar-reminder"), "CATALOG_REPAIRED")
+            catalog = (root / "CATALOG.md").read_text(encoding="utf-8")
+            self.assertIn("[011-calendar-reminder](solutions/011-calendar-reminder/)", catalog)
+            self.assertEqual(ensure_catalog_entry(root, "solutions/011-calendar-reminder"), "CATALOG_ALREADY_PRESENT")
+
+    def test_catalog_repair_rejects_table_injection(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            solution = root / "solutions" / "011-safe-tool"
+            solution.mkdir(parents=True)
+            (root / "CATALOG.md").write_text('<div dir="rtl">\n</div>\n', encoding="utf-8")
+            (solution / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "id": "011",
+                        "date": "2026-10-11",
+                        "slug": "safe-tool",
+                        "title_he": "מסוכן | לא",
+                        "audience_he": "קהל",
+                        "safety": {
+                            "read_only": True,
+                            "destructive": False,
+                            "network": False,
+                            "telemetry": False,
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                ensure_catalog_entry(root, "solutions/011-safe-tool")
 
 
 class PreflightTests(unittest.TestCase):
