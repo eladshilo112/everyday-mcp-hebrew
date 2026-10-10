@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test dist/tests/scanner.test.js dist/tests/anchors.test.js dist/tests/safety.test.js dist/tests/determinism-read-errors.test.js dist/tests/mcp-integration.test.js",
+    "test": "npm run build && node --test dist/tests",
     "start": "node dist/src/server.js"
   },
   "engines": {
@@ -33,11 +33,11 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/server": "2.0.0",
+    "@modelcontextprotocol/server": "2.3.1",
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/client": "2.3.1",
     "@types/node": "20.19.43",
     "typescript": "7.0.2"
   }

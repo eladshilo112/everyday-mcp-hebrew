@@ -3,17 +3,13 @@
   "allowed_categories": [
     "accessibility",
     "accounts",
-    "branding",
     "communication",
     "device-utility",
     "files",
-    "graphics",
-    "marketing",
     "personal-organization",
     "privacy",
     "process-improvement",
-    "productivity",
-    "strategy"
+    "productivity"
   ],
   "denied_phrases": [
     "real estate",

@@ -15,8 +15,11 @@ if ([string]::IsNullOrWhiteSpace($RepositoryPath)) {
 
 $script:LogPath = $null
 $script:ReportPath = $null
+$script:ManifestPath = $null
+$script:RunManifest = $null
+$script:RunDir = $null
 $script:Report = [ordered]@{
-    version = 1
+    version = 2
     status = "starting"
     started_at_utc = [DateTime]::UtcNow.ToString("o")
     mode = if ($PreflightOnly) { "preflight" } elseif ($DryRun) { "dry-run" } else { "publish" }
@@ -38,6 +41,47 @@ function Write-Utf8NoBom {
     param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
     $encoding = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($Path, $Text, $encoding)
+}
+
+function Save-RunManifest {
+    if ($null -eq $script:ManifestPath -or $null -eq $script:RunManifest) { return }
+    $script:RunManifest["heartbeat_at_utc"] = [DateTime]::UtcNow.ToString("o")
+    Write-Utf8NoBom -Path $script:ManifestPath -Text ($script:RunManifest | ConvertTo-Json -Depth 20)
+}
+
+function Set-RunPhase {
+    param(
+        [Parameter(Mandatory = $true)][string]$Phase,
+        [Parameter(Mandatory = $true)][string]$Status,
+        [string]$NextAction = "Continue the bounded daily workflow.",
+        [AllowNull()][object]$BlockedReason = $null
+    )
+    if ($null -eq $script:RunManifest) { return }
+    $script:RunManifest["phase"] = $Phase
+    $script:RunManifest["status"] = $Status
+    $script:RunManifest["next_action"] = $NextAction
+    $script:RunManifest["blocked_reason"] = $BlockedReason
+    Save-RunManifest
+}
+
+function Add-RunArtifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath,
+        [Parameter(Mandatory = $true)][string]$Kind,
+        [Parameter(Mandatory = $true)][string]$Stage
+    )
+    if ($null -eq $script:RunManifest -or [string]::IsNullOrWhiteSpace($RelativePath)) { return }
+    $existing = @($script:RunManifest["artifacts"] | Where-Object { [string]$_.path -eq $RelativePath })
+    if ($existing.Count -gt 0) { return }
+    $artifact = [ordered]@{ path = $RelativePath; kind = $Kind; stage = $Stage }
+    if ($null -ne $script:RunDir) {
+        $absolute = Join-Path $script:RunDir ($RelativePath -replace "/", "\")
+        if ($RelativePath -ne "run-manifest.json" -and (Test-Path -LiteralPath $absolute -PathType Leaf)) {
+            $artifact["sha256"] = (Get-FileHash -LiteralPath $absolute -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    }
+    $script:RunManifest["artifacts"] = @($script:RunManifest["artifacts"]) + @($artifact)
+    Save-RunManifest
 }
 
 function Write-CodexCompatiblePlanSchema {
@@ -65,7 +109,26 @@ function Write-RunLog {
 function Save-Report {
     if ($null -eq $script:ReportPath) { return }
     $script:Report["finished_at_utc"] = [DateTime]::UtcNow.ToString("o")
+    if ($null -ne $script:RunManifest) {
+        $script:RunManifest["status"] = [string]$script:Report.status
+        if ([string]$script:Report.status -eq "failed") {
+            $script:RunManifest["phase"] = "failed"
+            $script:RunManifest["next_action"] = "Inspect the preserved run evidence before retrying."
+            $script:RunManifest["blocked_reason"] = [string]$script:Report.error
+        } elseif ([string]$script:Report.status -eq "published" -or [string]$script:Report.status -eq "dry_run_passed") {
+            $script:RunManifest["phase"] = "completed"
+            $script:RunManifest["next_action"] = "Review the published or dry-run evidence from the owner chat."
+            $script:RunManifest["blocked_reason"] = $null
+        }
+    }
     Write-Utf8NoBom -Path $script:ReportPath -Text ($script:Report | ConvertTo-Json -Depth 20)
+    if ($null -ne $script:RunManifest) {
+        $reportArtifact = @($script:RunManifest["artifacts"] | Where-Object { [string]$_.path -eq "run-report.json" }) | Select-Object -First 1
+        if ($null -ne $reportArtifact -and (Test-Path -LiteralPath $script:ReportPath -PathType Leaf)) {
+            $reportArtifact["sha256"] = (Get-FileHash -LiteralPath $script:ReportPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+        Save-RunManifest
+    }
 }
 
 function Resolve-RequiredFile {
@@ -110,39 +173,12 @@ function Invoke-Captured {
         [AllowNull()][string]$InputText = $null,
         [string]$StdoutPath,
         [string]$StderrPath,
+        [ValidateRange(1, 7200)][int]$TimeoutSeconds = 900,
         [switch]$AllowFailure
     )
     if ([string]::IsNullOrWhiteSpace($WorkingDirectory)) {
         $WorkingDirectory = (Get-Location).Path
     }
-    if ($null -ne $InputText) {
-        $captureRoot = Join-Path $env:TEMP ("everyday-mcp-capture-" + [Guid]::NewGuid().ToString("N"))
-        try {
-            New-Item -ItemType Directory -Path $captureRoot -Force | Out-Null
-            $inputPath = Join-Path $captureRoot "stdin.utf8"
-            $effectiveStdoutPath = if ([string]::IsNullOrWhiteSpace($StdoutPath)) { Join-Path $captureRoot "stdout.utf8" } else { $StdoutPath }
-            $effectiveStderrPath = if ([string]::IsNullOrWhiteSpace($StderrPath)) { Join-Path $captureRoot "stderr.utf8" } else { $StderrPath }
-            Write-Utf8NoBom -Path $inputPath -Text $InputText
-            $argumentLine = (($Arguments | ForEach-Object { Convert-ToWindowsCommandLineArgument -Argument ([string]$_) }) -join ' ')
-            $process = Start-Process -FilePath $FilePath -ArgumentList $argumentLine -WorkingDirectory $WorkingDirectory -NoNewWindow -Wait -PassThru -RedirectStandardInput $inputPath -RedirectStandardOutput $effectiveStdoutPath -RedirectStandardError $effectiveStderrPath
-            $exitCode = $process.ExitCode
-            $outputRaw = Get-Content -LiteralPath $effectiveStdoutPath -Raw -Encoding UTF8
-            $errorRaw = Get-Content -LiteralPath $effectiveStderrPath -Raw -Encoding UTF8
-            $outputText = if ($null -eq $outputRaw) { "" } else { ([string]$outputRaw).TrimEnd() }
-            $errorText = if ($null -eq $errorRaw) { "" } else { ([string]$errorRaw).TrimEnd() }
-        }
-        finally {
-            if (Test-Path -LiteralPath $captureRoot) {
-                Remove-Item -LiteralPath $captureRoot -Recurse -Force
-            }
-        }
-        if ($exitCode -ne 0 -and -not $AllowFailure) {
-            $safeError = if ([string]::IsNullOrWhiteSpace($errorText)) { "no stderr" } else { ($errorText -split "`r?`n")[0] }
-            throw "Command failed with exit code ${exitCode}: $FilePath. $safeError"
-        }
-        return [pscustomobject]@{ ExitCode = $exitCode; Output = $outputText; Error = $errorText }
-    }
-
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $FilePath
     $startInfo.WorkingDirectory = $WorkingDirectory
@@ -150,21 +186,49 @@ function Invoke-Captured {
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
-    $startInfo.RedirectStandardInput = $false
+    $startInfo.RedirectStandardInput = ($null -ne $InputText)
     $startInfo.Arguments = (($Arguments | ForEach-Object { Convert-ToWindowsCommandLineArgument -Argument ([string]$_) }) -join ' ')
     $utf8 = New-Object System.Text.UTF8Encoding($false)
+    try { $startInfo.StandardInputEncoding = $utf8 } catch { }
     try { $startInfo.StandardOutputEncoding = $utf8 } catch { }
     try { $startInfo.StandardErrorEncoding = $utf8 } catch { }
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $startInfo
-    if (-not $process.Start()) { throw "Could not start process: $FilePath" }
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
-    $process.WaitForExit()
-    $exitCode = $process.ExitCode
-    $outputText = $stdoutTask.Result.TrimEnd()
-    $errorText = $stderrTask.Result.TrimEnd()
-    $process.Dispose()
+    $process = $null
+    $timedOut = $false
+    try {
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) { throw "Could not start process: $FilePath" }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if ($null -ne $InputText) {
+            try {
+                $inputBytes = $utf8.GetBytes($InputText)
+                $process.StandardInput.BaseStream.Write($inputBytes, 0, $inputBytes.Length)
+                $process.StandardInput.BaseStream.Flush()
+                $process.StandardInput.Close()
+            }
+            catch { }
+        }
+        $completed = $process.WaitForExit($TimeoutSeconds * 1000)
+        if (-not $completed) {
+            $timedOut = $true
+            try { $process.Kill($true) } catch { try { $process.Kill() } catch { } }
+            try { [void]$process.WaitForExit(5000) } catch { }
+        }
+        $exitCode = if ($timedOut) { 124 } else { $process.ExitCode }
+        $outputText = $stdoutTask.Result.TrimEnd()
+        $errorText = $stderrTask.Result.TrimEnd()
+        if ($timedOut) {
+            $timeoutLine = "Command timed out after $TimeoutSeconds seconds: $FilePath"
+            $errorText = if ([string]::IsNullOrWhiteSpace($errorText)) { $timeoutLine } else { "$timeoutLine`n$errorText" }
+        }
+    }
+    finally {
+        if ($null -ne $process) {
+            try { $process.StandardInput.Close() } catch { }
+            $process.Dispose()
+        }
+    }
     if (-not [string]::IsNullOrWhiteSpace($StdoutPath)) {
         Write-Utf8NoBom -Path $StdoutPath -Text $outputText
     }
@@ -175,7 +239,7 @@ function Invoke-Captured {
         $safeError = if ([string]::IsNullOrWhiteSpace($errorText)) { "no stderr" } else { ($errorText -split "`r?`n")[0] }
         throw "Command failed with exit code ${exitCode}: $FilePath. $safeError"
     }
-    return [pscustomobject]@{ ExitCode = $exitCode; Output = $outputText; Error = $errorText }
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = $outputText; Error = $errorText; TimedOut = $timedOut }
 }
 
 function Invoke-Wsl {
@@ -459,7 +523,43 @@ function Main {
     if ($codexCandidates.Count -eq 0) { throw "A signed-in Codex CLI binary was not found under LocalAppData" }
     $codex = $codexCandidates[0].FullName
 
-    Write-RunLog "Preflight: checking local subscription authentication and required tools."
+    $mutex = New-Object System.Threading.Mutex($false, "Local\EverydayMcpHebrewDaily")
+    $mutexOwned = $false
+    try {
+        if (-not $mutex.WaitOne(0)) { throw "Another daily runner instance is already active" }
+        $mutexOwned = $true
+
+        $stateRoot = Join-Path $env:LOCALAPPDATA ([string]$config.state_folder)
+        $runId = "{0}-{1}" -f [DateTime]::UtcNow.ToString("yyyyMMdd-HHmmss"), ([Guid]::NewGuid().ToString("N").Substring(0, 8))
+        $runDir = Join-Path $stateRoot ("runs\" + $runId)
+        New-Item -ItemType Directory -Path $runDir -Force | Out-Null
+        $script:RunDir = $runDir
+        $script:LogPath = Join-Path $runDir "runner.log"
+        $script:ReportPath = Join-Path $runDir "run-report.json"
+        $script:ManifestPath = Join-Path $runDir "run-manifest.json"
+        $script:RunManifest = [ordered]@{
+            version = 1
+            run_id = $runId
+            repository = [string]$config.repository
+            owner_role = "local_runner"
+            status = "running"
+            phase = "initialized"
+            started_at_utc = [DateTime]::UtcNow.ToString("o")
+            heartbeat_at_utc = [DateTime]::UtcNow.ToString("o")
+            next_action = "Run local authentication, GitHub protection, WSL, and Graphify preflight."
+            blocked_reason = $null
+            artifacts = @()
+        }
+        Save-RunManifest
+        Add-RunArtifact -RelativePath "run-manifest.json" -Kind "coordination" -Stage "initialized"
+        Add-RunArtifact -RelativePath "run-report.json" -Kind "report" -Stage "initialized"
+        Set-RunPhase -Phase "initialized" -Status "running" -NextAction "Run local authentication, GitHub protection, WSL, and Graphify preflight."
+        $script:Report["run_id"] = $runId
+        $script:Report["run_directory"] = $runDir
+        $script:Report["coordination_manifest"] = $script:ManifestPath
+        Write-RunLog "Run directory created."
+
+        Write-RunLog "Preflight: checking local subscription authentication and required tools."
     $claudeAuth = Invoke-Captured -FilePath $claude -Arguments @("auth", "status") -WorkingDirectory $repository
     $claudeAuthJson = $claudeAuth.Output | ConvertFrom-Json
     if (-not $claudeAuthJson.loggedIn) { throw "Claude Code subscription authentication is not active" }
@@ -476,27 +576,16 @@ function Main {
     if (-not $protection.enforce_admins.enabled -or $protection.allow_force_pushes.enabled -or $protection.allow_deletions.enabled) {
         throw "Branch protection must enforce admins and forbid force pushes and deletion"
     }
-    Invoke-Captured -FilePath $graphify -Arguments @("--version") -WorkingDirectory $repository | Out-Null
+    $graphifyVersion = Invoke-Captured -FilePath $graphify -Arguments @("--version") -WorkingDirectory $repository
+    $script:Report["graphify_version"] = $graphifyVersion.Output.Trim()
     $script:Report.stages["preflight"] = "passed"
 
     if ($PreflightOnly) {
         $script:Report.status = "preflight_passed"
+        Set-RunPhase -Phase "preflight" -Status "preflight_passed" -NextAction "Wait for the next scheduled daily run or start a controlled dry run."
         Write-RunLog "Preflight passed. No repository or GitHub changes were made."
         return
     }
-
-    $mutex = New-Object System.Threading.Mutex($false, "Local\EverydayMcpHebrewDaily")
-    if (-not $mutex.WaitOne(0)) { throw "Another daily runner instance is already active" }
-    try {
-        $stateRoot = Join-Path $env:LOCALAPPDATA ([string]$config.state_folder)
-        $runId = "{0}-{1}" -f [DateTime]::UtcNow.ToString("yyyyMMdd-HHmmss"), ([Guid]::NewGuid().ToString("N").Substring(0, 8))
-        $runDir = Join-Path $stateRoot ("runs\" + $runId)
-        New-Item -ItemType Directory -Path $runDir -Force | Out-Null
-        $script:LogPath = Join-Path $runDir "runner.log"
-        $script:ReportPath = Join-Path $runDir "run-report.json"
-        $script:Report["run_id"] = $runId
-        $script:Report["run_directory"] = $runDir
-        Write-RunLog "Run directory created."
 
         $runRepo = Join-Path $runDir "repo"
         $wslRepo = Convert-ToWslPath -WslExe $wsl -WindowsPath $runRepo
@@ -506,22 +595,38 @@ function Main {
         $clone = Invoke-Wsl -WslExe $wsl -Arguments @("git", "clone", "--depth", "1", "--branch", [string]$config.default_branch, [string]$config.remote_url, $wslRepo) -StdoutPath (Join-Path $runDir "clone.stdout") -StderrPath (Join-Path $runDir "clone.stderr")
         $baseHead = (Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "rev-parse", "HEAD")).Output.Trim()
         $script:Report["base_head"] = $baseHead
+        $script:RunManifest["base_head"] = $baseHead
+        Add-RunArtifact -RelativePath "clone.stdout" -Kind "clone-log" -Stage "initialized"
+        Add-RunArtifact -RelativePath "clone.stderr" -Kind "clone-log" -Stage "initialized"
+        Set-RunPhase -Phase "preflight" -Status "preflight_passed" -NextAction "Calculate the Jerusalem date and reserve the next contiguous solution id."
 
         $preflightJson = (Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/daily_preflight.py", "--root", $wslRepo)).Output | ConvertFrom-Json
         $date = [string]$preflightJson.date
         $solutionId = [string]$preflightJson.solution_id
         $script:Report["jerusalem_date"] = $date
         $script:Report["solution_id"] = $solutionId
+        $script:RunManifest["jerusalem_date"] = $date
+        $script:RunManifest["solution_id"] = $solutionId
         if ([string]$preflightJson.should_run -ne "true") {
             $script:Report.status = "duplicate_date_noop"
+            Set-RunPhase -Phase "preflight" -Status "duplicate_date_noop" -NextAction "Wait for the next Jerusalem date; no solution was generated."
             Write-RunLog "A solution already exists for the current Jerusalem date. No-op."
             return
         }
 
+        Set-RunPhase -Phase "planning" -Status "planning" -NextAction "Refresh Graphify and ask Claude for one bounded public solution plan."
         Write-RunLog "Graphify: refreshing the disposable clone before planning."
         Invoke-Captured -FilePath $graphify -Arguments @("update", ".", "--no-cluster") -WorkingDirectory $runRepo -StdoutPath (Join-Path $runDir "graphify-before.stdout") -StderrPath (Join-Path $runDir "graphify-before.stderr") | Out-Null
+        Add-RunArtifact -RelativePath "graphify-before.stdout" -Kind "graph-context" -Stage "planning"
+        Add-RunArtifact -RelativePath "graphify-before.stderr" -Kind "graph-context-error" -Stage "planning"
+        $graphFileBefore = Join-Path $runRepo "graphify-out\graph.json"
+        if (Test-Path -LiteralPath $graphFileBefore -PathType Leaf) {
+            $script:Report["graphify_before_sha256"] = (Get-FileHash -LiteralPath $graphFileBefore -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
         $graphBudget = [int]$config.context_budgets.graph_query_chars
         $planGraph = Invoke-GraphQuery -GraphifyExe $graphify -Repository $runRepo -Question "Map the existing daily MCP solutions, catalog topics, validators, dependency allowlist, documentation pattern, and exact relationships needed to add one non-duplicative solution. Return only the most relevant files and relationships." -Budget $graphBudget -EvidencePath (Join-Path $runDir "graphify-plan.txt")
+        Add-RunArtifact -RelativePath "graphify-plan.txt" -Kind "graph-context" -Stage "planning"
+        $script:Report["graphify_plan_truncated"] = $planGraph.Contains("[GRAPHIFY_CONTEXT_TRUNCATED_TO_BUDGET]")
         $catalog = Get-Content -LiteralPath (Join-Path $runRepo "CATALOG.md") -Raw -Encoding UTF8
         $policy = Get-Content -LiteralPath (Join-Path $runRepo ".automation\content-policy.json") -Raw -Encoding UTF8
         $baselineBytes = Get-RepositoryTextBytes -Repository $runRepo
@@ -560,6 +665,8 @@ $catalog
         $planJson = $plan | ConvertTo-Json -Depth 20
         $planPath = Join-Path $runDir "validated-plan.json"
         Write-Utf8NoBom -Path $planPath -Text $planJson
+        $script:RunManifest["slug"] = [string]$plan.slug
+        Add-RunArtifact -RelativePath "validated-plan.json" -Kind "plan" -Stage "planning"
         $wslPlanPath = Convert-ToWslPath -WslExe $wsl -WindowsPath $planPath
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/validate_topic_policy.py", $wslPlanPath, "--category", [string]$plan.category) | Out-Null
         $script:Report["planner_backend"] = $planResult.Backend
@@ -571,17 +678,20 @@ $catalog
         $script:Report["slug"] = [string]$plan.slug
         $script:Report["category"] = [string]$plan.category
         $script:Report.stages["claude_plan"] = "passed"
+        Set-RunPhase -Phase "implementation" -Status "implementation" -NextAction "Run Codex in the disposable clone within the validated delta boundary."
         Write-RunLog "Claude plan accepted by the closed schema and topic policy."
 
         $solutionRelative = "solutions/$solutionId-$($plan.slug)"
         if (Test-Path -LiteralPath (Join-Path $runRepo ($solutionRelative -replace "/", "\"))) { throw "Planned solution folder already exists" }
         $implementationGraph = Invoke-GraphQuery -GraphifyExe $graphify -Repository $runRepo -Question "For solution $solutionId-$($plan.slug), identify only the exact template files, MCP server patterns, validation gates, catalog format, test contracts, and impact paths Codex must follow." -Budget $graphBudget -EvidencePath (Join-Path $runDir "graphify-implementation.txt")
+        Add-RunArtifact -RelativePath "graphify-implementation.txt" -Kind "graph-context" -Stage "implementation"
+        $script:Report["graphify_implementation_truncated"] = $implementationGraph.Contains("[GRAPHIFY_CONTEXT_TRUNCATED_TO_BUDGET]")
         $implementationPrompt = @"
 Implement the inert validated plan below in this disposable clone.
 Use Graphify first for targeted navigation. Do not broadly read the repository when the graph answers the question.
 You may write only $solutionRelative/ and CATALOG.md.
 Do not commit, push, open a pull request, use the network, install packages, or modify existing solutions, policies, workflows, scripts, tests, Graphify configuration, or documentation outside the new solution.
-Do not include package-lock.json. The fixed validator will generate it without lifecycle scripts.
+Do not hand-edit package-lock.json. The fixed validator will generate and verify it deterministically without lifecycle scripts.
 Build a working TypeScript stdio MCP server with structuredContent and accurate read-only annotations.
 Include Hebrew-first RTL README, metadata, source, at least four test files including a real stdio MCP integration test, ten stable evaluations, and an optional skill/SKILL.md only when include_skill is true.
 Use exactly the pinned dependencies enforced by scripts/validate_solution.py.
@@ -599,28 +709,38 @@ $implementationGraph
         $codexResultPath = Join-Path $runRepo ".automation\codex-local-result.output.json"
         $codexStdout = Join-Path $runDir "codex-events.stdout"
         $codexRun = Invoke-Captured -FilePath $codex -Arguments @("exec", "-", "--sandbox", "workspace-write", "--cd", $runRepo, "--ephemeral", "--output-schema", $codexSchemaPath, "--output-last-message", $codexResultPath, "--color", "never") -WorkingDirectory $runRepo -InputText $implementationPrompt -StdoutPath $codexStdout -StderrPath (Join-Path $runDir "codex.stderr")
+        Add-RunArtifact -RelativePath "codex-events.stdout" -Kind "implementation-output" -Stage "implementation"
+        Add-RunArtifact -RelativePath "codex.stderr" -Kind "implementation-error" -Stage "implementation"
         $codexResult = Get-Content -LiteralPath $codexResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ([string]$codexResult.solution_id -ne $solutionId -or [string]$codexResult.slug -ne [string]$plan.slug) { throw "Codex result identity does not match the validated plan" }
         $headAfterCodex = (Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "rev-parse", "HEAD")).Output.Trim()
         if ($headAfterCodex -ne $baseHead) { throw "Codex created a commit, which is outside its authorization" }
         $script:Report.stages["codex_implementation"] = "completed"
+        Set-RunPhase -Phase "validation" -Status "validation" -NextAction "Run the fixed solution, delta, secret, topic, and catalog gates."
         Write-RunLog "Codex implementation completed inside the disposable clone."
 
-        Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/validate_daily_delta.py", "--root", $wslRepo, "--expected-id", $solutionId, "--expected-slug", [string]$plan.slug) -StdoutPath (Join-Path $runDir "delta-before.stdout") -StderrPath (Join-Path $runDir "delta-before.stderr") | Out-Null
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/validate_solution.py", "$wslRepo/$solutionRelative", "--install", "--audit") -StdoutPath (Join-Path $runDir "solution-validation.stdout") -StderrPath (Join-Path $runDir "solution-validation.stderr") | Out-Null
-        $generatedLockPath = Join-Path $runRepo (($solutionRelative + "/package-lock.json") -replace "/", "\")
-        if (Test-Path -LiteralPath $generatedLockPath -PathType Leaf) {
-            Remove-Item -LiteralPath $generatedLockPath -Force
-            $script:Report["generated_package_lock_removed"] = $true
-        }
+        Add-RunArtifact -RelativePath "solution-validation.stdout" -Kind "validation-output" -Stage "validation"
+        Add-RunArtifact -RelativePath "solution-validation.stderr" -Kind "validation-error" -Stage "validation"
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/validate_daily_delta.py", "--root", $wslRepo, "--expected-id", $solutionId, "--expected-slug", [string]$plan.slug) -StdoutPath (Join-Path $runDir "delta-after.stdout") -StderrPath (Join-Path $runDir "delta-after.stderr") | Out-Null
+        Add-RunArtifact -RelativePath "delta-after.stdout" -Kind "delta-gate" -Stage "validation"
+        Add-RunArtifact -RelativePath "delta-after.stderr" -Kind "delta-gate" -Stage "validation"
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/scan_secrets.py", "$wslRepo/$solutionRelative") -StdoutPath (Join-Path $runDir "secret-scan.stdout") -StderrPath (Join-Path $runDir "secret-scan.stderr") | Out-Null
         Invoke-Wsl -WslExe $wsl -Arguments @("python3", "$wslRepo/scripts/validate_topic_policy.py", "$wslRepo/$solutionRelative", "--category", [string]$plan.category) -StdoutPath (Join-Path $runDir "topic-policy.stdout") -StderrPath (Join-Path $runDir "topic-policy.stderr") | Out-Null
         $script:Report.stages["deterministic_validation"] = "passed"
+        Set-RunPhase -Phase "review" -Status "review" -NextAction "Refresh the impact graph and request one independent Claude review."
         Write-RunLog "Fixed build, MCP integration, audit, secret, delta, and topic gates passed."
 
         Invoke-Captured -FilePath $graphify -Arguments @("update", ".", "--no-cluster") -WorkingDirectory $runRepo -StdoutPath (Join-Path $runDir "graphify-after.stdout") -StderrPath (Join-Path $runDir "graphify-after.stderr") | Out-Null
+        Add-RunArtifact -RelativePath "graphify-after.stdout" -Kind "graph-context" -Stage "review"
+        Add-RunArtifact -RelativePath "graphify-after.stderr" -Kind "graph-context-error" -Stage "review"
+        $graphFileAfter = Join-Path $runRepo "graphify-out\graph.json"
+        if (Test-Path -LiteralPath $graphFileAfter -PathType Leaf) {
+            $script:Report["graphify_after_sha256"] = (Get-FileHash -LiteralPath $graphFileAfter -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
         $reviewGraph = Invoke-GraphQuery -GraphifyExe $graphify -Repository $runRepo -Question "Review the impact of $solutionRelative. Identify only boundary violations, unsafe relationships, validator gaps, duplicated purpose, and catalog inconsistencies relevant to approval." -Budget $graphBudget -EvidencePath (Join-Path $runDir "graphify-review.txt")
+        Add-RunArtifact -RelativePath "graphify-review.txt" -Kind "graph-context" -Stage "review"
+        $script:Report["graphify_review_truncated"] = $reviewGraph.Contains("[GRAPHIFY_CONTEXT_TRUNCATED_TO_BUDGET]")
         Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "add", "-N", "--", $solutionRelative) | Out-Null
         $diffStat = (Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "diff", "--stat", "--", "CATALOG.md", $solutionRelative)).Output
         $interfaceDiffRaw = (Invoke-Wsl -WslExe $wsl -Arguments @("git", "-C", $wslRepo, "diff", "--no-ext-diff", "--unified=1", "--", "$solutionRelative/package.json", "$solutionRelative/metadata.json", "$solutionRelative/src/server.ts", "$solutionRelative/src/schemas.ts")).Output
@@ -667,6 +787,8 @@ $diffExcerpt
         $reviewSystemPrompt = "You are a constrained public open-source code reviewer. Judge only the supplied evidence and return only the required structured JSON. Do not use tools or infer private context. Approve only with policy_ok=true, tests_ok=true, and material_findings=[]. Only blocking issues belong in material_findings; put all non-blocking caveats in summary."
         $reviewClaudeArguments = @("-p", "--safe-mode", "--system-prompt", $reviewSystemPrompt, "--permission-mode", "plan", "--model", "sonnet", "--effort", "medium", "--output-format", "json", "--max-turns", "4", "--no-session-persistence", "--json-schema", $reviewSchema, "--disallowedTools", "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,Task")
         $reviewResult = Invoke-ClaudeStructuredWithCodexFallback -Stage "review" -Claude $claude -ClaudeArguments $reviewClaudeArguments -Codex $codex -Prompt $reviewPrompt -FallbackSystemPrompt $reviewSystemPrompt -SchemaPath $reviewSchemaPath -WorkingDirectory $runRepo -ClaudeStdoutPath (Join-Path $runDir "claude-review.output.json") -ClaudeStderrPath (Join-Path $runDir "claude-review.stderr") -CodexResultPath (Join-Path $runDir "codex-review.output.json") -CodexStdoutPath (Join-Path $runDir "codex-review.stdout") -CodexStderrPath (Join-Path $runDir "codex-review.stderr") -FallbackEnabled $codexAvailabilityFallbackEnabled
+        Add-RunArtifact -RelativePath "claude-review.output.json" -Kind "review-output" -Stage "review"
+        Add-RunArtifact -RelativePath "claude-review.stderr" -Kind "review-error" -Stage "review"
         $review = $reviewResult.Value
         $script:Report["reviewer_backend"] = $reviewResult.Backend
         if ($reviewResult.Backend -ne "claude") {
@@ -707,8 +829,18 @@ $diffExcerpt
         if (-not $reviewDecision.Pass) {
             throw "Independent review did not approve the generated solution: $($reviewDecision.Reason)"
         }
+        $requireIndependentClaude = (
+            $config.PSObject.Properties.Name -contains "publication" -and
+            $null -ne $config.publication -and
+            $config.publication.PSObject.Properties.Name -contains "require_independent_claude_plan_and_review" -and
+            [bool]$config.publication.require_independent_claude_plan_and_review
+        )
+        if ($requireIndependentClaude -and ($planResult.Backend -ne "claude" -or $reviewResult.Backend -ne "claude")) {
+            throw "Automatic publication is blocked when Claude planning and review are not both available"
+        }
         $script:Report.stages["claude_review"] = "approved"
         $script:Report.stages["independent_review"] = "approved"
+        Set-RunPhase -Phase "publication" -Status "review" -NextAction "Create the daily branch only after all local gates and review are approved."
         $promptChars = [int64]$script:Report.context_metrics.plan_prompt_chars + [int64]$script:Report.context_metrics.implementation_prompt_chars + [int64]$script:Report.context_metrics.review_prompt_chars
         $script:Report.context_metrics["combined_prompt_chars"] = $promptChars
         $script:Report.context_metrics["combined_estimated_tokens_at_4_chars"] = [Math]::Ceiling($promptChars / 4.0)
@@ -719,6 +851,7 @@ $diffExcerpt
 
         if ($DryRun) {
             $script:Report.status = "dry_run_passed"
+            Set-RunPhase -Phase "completed" -Status "dry_run_passed" -NextAction "Review the preserved dry-run evidence from the owner chat."
             Write-RunLog "Dry run passed. GitHub publication was intentionally skipped and the clone was preserved."
             return
         }
@@ -739,6 +872,8 @@ $diffExcerpt
         $prBody = "Claude planned and reviewed this bounded solution. Codex implemented it in a disposable local clone. Graphify supplied targeted dependency context before and after implementation. Fixed validators compiled, tested, audited, and scanned the exact delta before publication. Required CI still gates squash auto-merge."
         $prUrl = (Invoke-Wsl -WslExe $wsl -Arguments @("gh", "pr", "create", "-R", [string]$config.repository, "--base", [string]$config.default_branch, "--head", $branch, "--title", $prTitle, "--body", $prBody)).Output.Trim()
         $script:PublicationState.pr_url = $prUrl
+        $script:RunManifest["pull_request_url"] = $prUrl
+        Set-RunPhase -Phase "publication" -Status "publishing" -NextAction "Wait for required CI and confirm the pull request is merged."
         Invoke-Wsl -WslExe $wsl -Arguments @("gh", "pr", "merge", "-R", [string]$config.repository, "--auto", "--squash", "--delete-branch", $prUrl) | Out-Null
         Invoke-Wsl -WslExe $wsl -Arguments @("gh", "pr", "checks", "-R", [string]$config.repository, "--watch", "--fail-fast", $prUrl) | Out-Null
         $merged = $false
@@ -756,6 +891,7 @@ $diffExcerpt
         if (-not $merged) { throw "CI passed but the pull request was not confirmed merged" }
         $script:Report.stages["github_publication"] = "merged"
         $script:Report.status = "published"
+        Set-RunPhase -Phase "completed" -Status "published" -NextAction "Review the merged solution and retain the local evidence according to policy."
         Write-RunLog "The daily pull request passed CI and was confirmed merged."
 
         $resolvedRunRepo = [System.IO.Path]::GetFullPath($runRepo)
@@ -767,7 +903,7 @@ $diffExcerpt
     }
     finally {
         if ($null -ne $mutex) {
-            try { $mutex.ReleaseMutex() } catch { }
+            if ($mutexOwned) { try { $mutex.ReleaseMutex() } catch { } }
             $mutex.Dispose()
         }
     }

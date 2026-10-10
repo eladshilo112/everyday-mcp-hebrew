@@ -31,6 +31,12 @@ $inputStream.CopyTo($memory)
         $actualBytes = [Convert]::FromBase64String($captured.Output)
         throw "Invoke-Captured did not send exact UTF-8 bytes: expected=$($expectedBytes.Length), actual=$($actualBytes.Length), expected_b64=$expectedBase64, actual_b64=$($captured.Output)"
     }
+    $timeoutProbe = Invoke-Captured -FilePath $powershell -Arguments @(
+        "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "Start-Sleep -Seconds 5"
+    ) -WorkingDirectory $testRoot -TimeoutSeconds 1 -AllowFailure
+    if (-not [bool]$timeoutProbe.TimedOut -or [int]$timeoutProbe.ExitCode -ne 124 -or $timeoutProbe.Error -notmatch "timed out after 1 seconds") {
+        throw "Invoke-Captured did not enforce a bounded timeout"
+    }
 
     $quotaEnvelope = [ordered]@{
         is_error = $true
@@ -139,8 +145,37 @@ exit /b 2
     if (-not [bool]$config.fallbacks.codex_on_claude_known_unavailability) {
         throw "Codex quota fallback is not explicitly enabled"
     }
+    if (-not [bool]$config.publication.require_independent_claude_plan_and_review) {
+        throw "Automatic publication must require independent Claude planning and review"
+    }
     if ($config.review.reclassify_inconsistent_approve_once -isnot [bool] -or -not $config.review.reclassify_inconsistent_approve_once) {
         throw "The single review reclassification retry is not explicitly enabled"
+    }
+
+    $manifestProbePath = Join-Path $testRoot "timeout-run\run-manifest.json"
+    $reportProbePath = Join-Path $testRoot "timeout-run\run-report.json"
+    New-Item -ItemType Directory -Path (Split-Path -Parent $manifestProbePath) -Force | Out-Null
+    $script:RunDir = Split-Path -Parent $manifestProbePath
+    $script:ManifestPath = $manifestProbePath
+    $script:ReportPath = $reportProbePath
+    $script:RunManifest = [ordered]@{
+        version = 1
+        run_id = "20261010-090000-abcdef12"
+        repository = "eladshilo112/everyday-mcp-hebrew"
+        owner_role = "local_runner"
+        status = "running"
+        phase = "validation"
+        started_at_utc = "2026-10-10T06:00:00.0000000Z"
+        heartbeat_at_utc = "2026-10-10T06:01:00.0000000Z"
+        next_action = "run deterministic validation"
+        blocked_reason = $null
+        artifacts = @([ordered]@{ path = "run-report.json"; kind = "report"; stage = "validation" })
+    }
+    $script:Report = [ordered]@{ status = "failed"; error = "Command timed out after 1 seconds" }
+    Save-Report
+    $timeoutManifest = Get-Content -LiteralPath $manifestProbePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($timeoutManifest.status -ne "failed" -or $timeoutManifest.phase -ne "failed" -or [string]::IsNullOrWhiteSpace([string]$timeoutManifest.next_action)) {
+        throw "A timeout/failure did not finalize the coordination manifest"
     }
 
     [pscustomobject]@{
@@ -156,6 +191,7 @@ exit /b 2
         codex_error_selection = $true
         fallback_enabled = $true
         review_reclassification_enabled = $true
+        timeout_manifest_finalized = $true
         test_root = $testRoot
     }
 }

@@ -28,11 +28,11 @@ REQUIRED_FILES = {
     "evaluations.xml",
 }
 ALLOWED_DEPENDENCIES = {
-    "@modelcontextprotocol/server": "2.0.0",
+    "@modelcontextprotocol/server": "2.3.1",
     "zod": "4.4.3",
 }
 ALLOWED_DEV_DEPENDENCIES = {
-    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/client": "2.3.1",
     "@types/node": "20.19.43",
     "typescript": "7.0.2",
 }
@@ -79,7 +79,7 @@ def ensure_solution_path(path: Path) -> tuple[str, str]:
     return match.group(1), match.group(2)
 
 
-def validate_static(solution: Path) -> list[str]:
+def validate_static(solution: Path, *, require_lockfile: bool = False) -> list[str]:
     errors: list[str] = []
     try:
         solution_id, slug = ensure_solution_path(solution)
@@ -89,6 +89,8 @@ def validate_static(solution: Path) -> list[str]:
     for relative in sorted(REQUIRED_FILES):
         if not (solution / relative).is_file():
             errors.append(f"missing required file: {relative}")
+    if require_lockfile and not (solution / "package-lock.json").is_file():
+        errors.append("missing required file: package-lock.json")
 
     if errors:
         return errors
@@ -208,6 +210,9 @@ def validate_runtime(solution: Path, audit: bool) -> None:
     lockfile = solution / "package-lock.json"
     if not lockfile.exists():
         run(["npm", "install", "--package-lock-only", "--ignore-scripts"], solution)
+    lock_errors = validate_static(solution, require_lockfile=True)
+    if lock_errors:
+        raise RuntimeError("lockfile validation failed: " + "; ".join(lock_errors))
     run(["npm", "ci", "--ignore-scripts"], solution)
     tsc = solution / "node_modules" / ".bin" / ("tsc.cmd" if sys.platform == "win32" else "tsc")
     run([str(tsc), "-p", "tsconfig.json", "--noEmit"], solution)
@@ -227,7 +232,7 @@ def main() -> int:
     parser.add_argument("--audit", action="store_true")
     args = parser.parse_args()
     solution = args.solution.resolve()
-    errors = validate_static(solution)
+    errors = validate_static(solution, require_lockfile=not args.install)
     if errors:
         for error in errors:
             print(f"SOLUTION_ERROR: {error}", file=sys.stderr)

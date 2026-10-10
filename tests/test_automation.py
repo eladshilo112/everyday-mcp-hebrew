@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import subprocess
 import tempfile
@@ -17,6 +18,7 @@ from timezone_guard import jerusalem_time  # noqa: E402
 from validate_catalog import validate_catalog  # noqa: E402
 from validate_topic_policy import validate_category, validate_target  # noqa: E402
 import validate_daily_delta as daily_delta  # noqa: E402
+from validate_coordination import validate_manifest, validate_manifest_schema, validate_policy  # noqa: E402
 
 
 class TimezoneTests(unittest.TestCase):
@@ -146,6 +148,12 @@ class TopicPolicyTests(unittest.TestCase):
         errors = validate_category("unreviewed-domain")
         self.assertTrue(any("category must be one of" in error for error in errors))
 
+    def test_rejects_excluded_business_content_categories(self) -> None:
+        for category in ("marketing", "branding", "graphics", "strategy"):
+            with self.subTest(category=category):
+                errors = validate_category(category)
+                self.assertTrue(any("category must be one of" in error for error in errors))
+
     def test_rejects_denied_public_topic(self) -> None:
         target = self.root / "unsafe.md"
         target.write_text("This is a real estate market helper.", encoding="utf-8")
@@ -193,6 +201,44 @@ class RuntimeDeltaBoundaryTests(unittest.TestCase):
         ):
             errors = daily_delta.validate_delta(self.root, "002", "safe-tool")
         self.assertTrue(any("out-of-scope worktree change: README.md" in error for error in errors))
+
+
+class CoordinationContractTests(unittest.TestCase):
+    def test_manifest_schema_matches_validator_contract(self) -> None:
+        self.assertEqual(validate_manifest_schema(), [])
+
+    def test_repository_coordination_policy_is_valid(self) -> None:
+        self.assertEqual(validate_policy(), [])
+
+    def test_manifest_requires_relative_unique_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "run-manifest.json"
+            manifest.write_text(
+                """{
+                  "version": 1,
+                  "run_id": "20261010-090000-abcdef12",
+                  "repository": "eladshilo112/everyday-mcp-hebrew",
+                  "owner_role": "local_runner",
+                  "status": "running",
+                  "phase": "planning",
+                  "started_at_utc": "2026-10-10T06:00:00.0000000Z",
+                  "heartbeat_at_utc": "2026-10-10T06:01:00.0000000Z",
+                  "next_action": "run deterministic validation",
+                  "blocked_reason": null,
+                  "artifacts": [
+                    {"path": "run-report.json", "kind": "report", "stage": "running"},
+                    {"path": "graphify-plan.txt", "kind": "context", "stage": "planning"}
+                  ]
+                }
+                """,
+                encoding="utf-8",
+            )
+            self.assertEqual(validate_manifest(manifest), [])
+
+            invalid = json.loads(manifest.read_text(encoding="utf-8"))
+            invalid["artifacts"].append({"path": "../outside.txt", "kind": "evidence", "stage": "planning"})
+            manifest.write_text(json.dumps(invalid), encoding="utf-8")
+            self.assertTrue(any("confined" in error for error in validate_manifest(manifest)))
 
 
 if __name__ == "__main__":

@@ -13,6 +13,9 @@
   "review": {
     "reclassify_inconsistent_approve_once": true
   },
+  "publication": {
+    "require_independent_claude_plan_and_review": true
+  },
   "context_budgets": {
     "graph_query_chars": 12000,
     "plan_prompt_chars": 24000,
